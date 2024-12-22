@@ -21,8 +21,9 @@
             margin: 0;
             color: #333;
             transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
-            background-size: cover;
-            background-position: center;
+            background-size: cover; /* Ensures the background image covers the entire screen */
+            background-position: center; /* Keeps the image centered */
+            background-attachment: fixed; /* Optional: makes the background stay fixed when scrolling */
         }
 
         /* Wobbly font animation for the name */
@@ -80,7 +81,7 @@
 <p class="name">Nathanael Suarez 🥳</p>
 <p>You found my GitHub page! Welcome! 🎉</p>
 
-<button onclick="alert('Thanks for visiting!')"> Me</button>
+<button onclick="alert('Thanks for visiting!')">Click Me</button>
 
 <script>
     // Function to change the background image and fade it in

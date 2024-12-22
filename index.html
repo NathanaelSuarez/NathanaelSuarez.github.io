@@ -1,7 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nathanael Suarez's Page</title>
+    <style>
+        /* Body background and text color */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            text-align: center;
+            padding: 50px;
+            margin: 0;
+            color: #333;
+        }
+
+        /* Wobbly font animation for the name */
+        @keyframes wobble {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(5deg); }
+            50% { transform: rotate(-5deg); }
+            75% { transform: rotate(3deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* Apply the wobbly animation */
+        h1 {
+            font-family: 'Lobster', cursive;
+            font-size: 3em;
+            color: #FF6347; /* Tomato color */
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+            animation: wobble 1s infinite;
+        }
+
+        /* Fancy font for the name */
+        .name {
+            font-family: 'Dancing Script', cursive;
+            font-size: 2.5em;
+            color: #2e8b57; /* SeaGreen color */
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* A little more styling for the paragraph */
+        p {
+            font-size: 1.2em;
+            color: #555;
+        }
+
+        /* Button style */
+        button {
+            background-color: #FF6347;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #e55347;
+        }
+    </style>
+    <!-- Importing Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Lobster&family=Dancing+Script&display=swap" rel="stylesheet">
+</head>
 <body>
+
 <h1>Hello World</h1>
-<p>You found my github page! 🥳</p>
+<p class="name">Nathanael Suarez 🥳</p>
+<p>You found my GitHub page! Welcome! 🎉</p>
+
+<button onclick="alert('Thanks for visiting!')">Click Me</button>
+
 </body>
 </html>

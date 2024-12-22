@@ -39,16 +39,17 @@
         h1 {
             font-family: 'NathanaelFont', cursive;
             font-size: 3em;
-            color: #FF00FF; /* Magenta color */
+            color: #FF6347; /* Tomato color */
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
             animation: wobble 1s infinite;
+            cursor: pointer; /* Change cursor to pointer to indicate clickability */
         }
 
         /* Fancy font for the name */
         .name {
             font-family: 'NathanaelFont', cursive;
             font-size: 2.5em;
-            color: #FFFF00; /* Yellow color */
+            color: #525200; /* Golden color */
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
         }
 
@@ -74,29 +75,18 @@
             background-color: #e55347;
         }
 
-        /* Style for the input field */
-        .name-input {
-            font-size: 1.5em;
-            padding: 10px;
-            border: 2px solid #FF6347;
-            background-color: transparent;
-            color: #333;
-            width: 60%;
-            text-align: center;
-            font-family: 'NathanaelFont', sans-serif;
-            outline: none;
-        }
-
-        .name-input::placeholder {
-            color: #aaa;
+        /* Make content editable element stand out */
+        .editable {
+            outline: none;  /* Removes outline when editing */
+            color: inherit;  /* Inherit color from parent */
+            background: transparent;  /* No background color */
+            font-size: inherit;
         }
     </style>
 </head>
 <body>
 
-<h1>Hello</h1>
-<input type="text" class="name-input" placeholder="Type your name here..." id="nameInput">
-
+<h1 class="editable" contenteditable="true">Hello World</h1>
 <p class="name">Nathanael Suarez 🥳</p>
 <p>You found my GitHub page! Welcome! 🎉</p>
 
@@ -123,6 +113,29 @@
 
     // Initial background change on page load
     changeBackgroundImage();
+
+    // Function to randomize the color of each character in the body
+    function randomizeTextColors() {
+        const elements = document.querySelectorAll('body *'); // Select all elements in the body
+        elements.forEach(element => {
+            element.innerHTML = Array.from(element.innerHTML)
+                .map(char => `<span style="color: ${getRandomColor()}">${char}</span>`)
+                .join('');
+        });
+    }
+
+    // Function to generate a random color
+    function getRandomColor() {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    }
+
+    // Apply the color randomization on page load
+    window.onload = randomizeTextColors;
 </script>
 
 </body>

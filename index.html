@@ -39,7 +39,7 @@
         h1 {
             font-family: 'NathanaelFont', cursive;
             font-size: 3em;
-            color: #FF6347; /* Tomato color */
+            color: #FF00FF; /* Magenta color */
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
             animation: wobble 1s infinite;
         }
@@ -48,7 +48,7 @@
         .name {
             font-family: 'NathanaelFont', cursive;
             font-size: 2.5em;
-            color: #525200; /* SeaGreen color */
+            color: #FFFF00; /* Yellow color */
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
         }
 
@@ -73,11 +73,30 @@
         button:hover {
             background-color: #e55347;
         }
+
+        /* Style for the input field */
+        .name-input {
+            font-size: 1.5em;
+            padding: 10px;
+            border: 2px solid #FF6347;
+            background-color: transparent;
+            color: #333;
+            width: 60%;
+            text-align: center;
+            font-family: 'NathanaelFont', sans-serif;
+            outline: none;
+        }
+
+        .name-input::placeholder {
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
 
-<h1>Hello World</h1>
+<h1>Hello</h1>
+<input type="text" class="name-input" placeholder="Type your name here..." id="nameInput">
+
 <p class="name">Nathanael Suarez 🥳</p>
 <p>You found my GitHub page! Welcome! 🎉</p>
 

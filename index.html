@@ -16,6 +16,10 @@
     </script>
     <!-- End Google Analytics -->
     
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7302835513628868" crossorigin="anonymous"></script>
+    <!-- End Google AdSense -->
+
     <style>
         /* Import custom font */
         @font-face {
@@ -33,9 +37,9 @@
             margin: 0;
             color: #333;
             transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
-            background-size: cover; /* Ensures the background image covers the entire screen */
-            background-position: center; /* Keeps the image centered */
-            background-attachment: fixed; /* Optional: makes the background stay fixed when scrolling */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }
 
         /* Wobbly font animation for the name */
@@ -50,24 +54,24 @@
         /* Apply the wobbly animation */
         h1 {
             font-family: 'NathanaelFont', cursive;
-            font-size: 6em; /* Increased from 3em to 6em */
-            color: #FF6347; /* Tomato color */
+            font-size: 6em;
+            color: #FF6347;
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
             animation: wobble 1s infinite;
-            cursor: pointer; /* Change cursor to pointer to indicate clickability */
+            cursor: pointer;
         }
 
         /* Fancy font for the name */
         .name {
             font-family: 'NathanaelFont', cursive;
-            font-size: 5em; /* Increased from 2.5em to 5em */
-            color: #525200; /* Golden color */
+            font-size: 5em;
+            color: #525200;
             text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
         }
 
         /* A little more styling for the paragraph */
         p {
-            font-size: 2.4em; /* Increased from 1.2em to 2.4em */
+            font-size: 2.4em;
             color: #555;
         }
 
@@ -76,8 +80,8 @@
             background-color: #FF6347;
             color: white;
             border: none;
-            padding: 30px 60px; /* Increased padding */
-            font-size: 2.4em; /* Increased font size */
+            padding: 30px 60px;
+            font-size: 2.4em;
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
@@ -89,10 +93,17 @@
 
         /* Make content editable element stand out */
         .editable {
-            outline: none;  /* Removes outline when editing */
-            color: inherit;  /* Inherit color from parent */
-            background: transparent;  /* No background color */
+            outline: none;
+            color: inherit;
+            background: transparent;
             font-size: inherit;
+        }
+
+        /* Style for the AdSense ad container */
+        .ads-container {
+            margin: 30px 0;
+            display: block;
+            text-align: center;
         }
     </style>
 </head>
@@ -101,6 +112,18 @@
 <h1 class="editable" contenteditable="true">Hello World</h1>
 <p class="name">Nathanael Suarez 🥳</p>
 <p>You found my GitHub page! Welcome! 🎉</p>
+
+<!-- AdSense Ad Block (Example) -->
+<div class="ads-container">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-7302835513628868"
+         data-ad-slot="YOUR_AD_SLOT_ID"
+         data-ad-format="auto"></ins>
+    <script>
+         (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+</div>
 
 <button onclick="alert('Thanks for visiting!')">Click Me</button>
 

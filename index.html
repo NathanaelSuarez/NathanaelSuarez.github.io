@@ -8,7 +8,7 @@
         /* Import custom font */
         @font-face {
             font-family: 'NathanaelFont';
-            src: url('/files/NathanaelFont.ttf') format('truetype');
+            src: url('/io/files/NathanaelFont.ttf') format('truetype');
             font-weight: normal;
             font-style: normal;
         }
@@ -16,11 +16,13 @@
         /* Body background and text color */
         body {
             font-family: 'NathanaelFont', sans-serif;
-            background-color: #f4f4f9;
             text-align: center;
             padding: 50px;
             margin: 0;
             color: #333;
+            transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
+            background-size: cover;
+            background-position: center;
         }
 
         /* Wobbly font animation for the name */
@@ -79,6 +81,29 @@
 <p>You found my GitHub page! Welcome! 🎉</p>
 
 <button onclick="alert('Thanks for visiting!')">Click Me</button>
+
+<script>
+    // Function to change the background image and fade it in
+    function changeBackgroundImage() {
+        fetch('https://cataas.com/cat')  // Fetch a random cat image
+            .then(response => response.blob())  // Convert the response to a Blob (binary data)
+            .then(imageBlob => {
+                const imageURL = URL.createObjectURL(imageBlob);  // Create a URL for the image
+                document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
+                document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
+                setTimeout(() => {
+                    document.body.style.opacity = 1;  // Slowly fade in the background
+                }, 100);
+            })
+            .catch(error => console.error('Error fetching cat image:', error));
+    }
+
+    // Change background image every 5 seconds
+    setInterval(changeBackgroundImage, 5000);
+
+    // Initial background change on page load
+    changeBackgroundImage();
+</script>
 
 </body>
 </html>

@@ -3,118 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pastebin Drag & Drop</title>
+    <title>Nathanael Suarez's Page</title>
+    
+    <!-- Google Analytics (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-40E68RDLC8"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-40E68RDLC8');
+    </script>
+    <!-- End Google Analytics -->
+    
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7302835513628868" crossorigin="anonymous"></script>
+    <!-- End Google AdSense -->
+
     <style>
+        /* Import custom font */
+        @font-face {
+            font-family: 'NathanaelFont';
+            src: url('/files/NathanaelFont.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        /* Body background and text color */
         body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #f4f4f4;
-        }
-
-        .drop-zone {
-            width: 80%;
-            height: 80%;
-            border: 2px dashed #ccc;
-            border-radius: 10px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            font-family: 'NathanaelFont', sans-serif;
             text-align: center;
-            color: #aaa;
+            padding: 50px;
+            margin: 0;
+            color: #333;
+            transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }
 
-        .drop-zone img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
+        /* Wobbly font animation for the name */
+        @keyframes wobble {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(5deg); }
+            50% { transform: rotate(-5deg); }
+            75% { transform: rotate(3deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* Apply the wobbly animation */
+        h1 {
+            font-family: 'NathanaelFont', cursive;
+            font-size: 6em;
+            color: #FF6347;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+            animation: wobble 1s infinite;
+            cursor: pointer;
+        }
+
+        /* Fancy font for the name */
+        .name {
+            font-family: 'NathanaelFont', cursive;
+            font-size: 5em;
+            color: #525200;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* A little more styling for the paragraph */
+        p {
+            font-size: 2.4em;
+            color: #555;
+        }
+
+        /* Button style */
+        button {
+            background-color: #FF6347;
+            color: white;
+            border: none;
+            padding: 30px 60px;
+            font-size: 2.4em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #e55347;
+        }
+
+        /* Make content editable element stand out */
+        .editable {
+            outline: none;
+            color: inherit;
+            background: transparent;
+            font-size: inherit;
+        }
+
+        /* Style for the AdSense ad container */
+        .ads-container {
+            margin: 30px 0;
+            display: block;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div class="drop-zone" id="dropZone">
-        Drag & Drop an Image Here
-    </div>
 
+<h1 class="editable" contenteditable="true">Hello World</h1>
+<p class="name">Nathanael Suarez 🥳</p>
+<p>You found my GitHub page! Welcome! 🎉</p>
+
+<!-- AdSense Ad Block (Example) -->
+<div class="ads-container">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-7302835513628868"
+         data-ad-slot="YOUR_AD_SLOT_ID"
+         data-ad-format="auto"></ins>
     <script>
-        const pastebinApiKey = "0Z29iGX7jNgbKBqdrYNXXXWkXPbPVgz5";
-        const pastebinCode = "RGiYJ2yd"; // Replace with your specific Pastebin ID
-        const dropZone = document.getElementById("dropZone");
-
-        // Function to fetch the content of the Pastebin
-        async function loadContent() {
-            try {
-                const response = await fetch(`https://pastebin.com/raw/${pastebinCode}`);
-                const content = await response.text();
-                dropZone.innerHTML = content; // Load content into the drop zone
-            } catch (error) {
-                console.error("Error loading content from Pastebin:", error);
-            }
-        }
-
-        // Function to upload updated content to Pastebin
-        async function updatePastebin(content) {
-            try {
-                const response = await fetch("https://pastebin.com/api/api_post.php", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: new URLSearchParams({
-                        api_dev_key: pastebinApiKey,
-                        api_option: "paste",
-                        api_paste_code: content,
-                        api_paste_private: 1,
-                        api_paste_format: "html",
-                        api_paste_name: "Updated Web Page"
-                    })
-                });
-
-                const result = await response.text();
-                console.log("Pastebin updated at:", result);
-            } catch (error) {
-                console.error("Error updating Pastebin:", error);
-            }
-        }
-
-        // Handle drag-and-drop functionality
-        dropZone.addEventListener("dragover", (event) => {
-            event.preventDefault();
-            dropZone.style.borderColor = "#000";
-        });
-
-        dropZone.addEventListener("dragleave", () => {
-            dropZone.style.borderColor = "#ccc";
-        });
-
-        dropZone.addEventListener("drop", async (event) => {
-            event.preventDefault();
-            dropZone.style.borderColor = "#ccc";
-
-            const file = event.dataTransfer.files[0];
-            if (file && file.type.startsWith("image/")) {
-                const reader = new FileReader();
-
-                reader.onload = async (e) => {
-                    const img = document.createElement("img");
-                    img.src = e.target.result;
-                    dropZone.innerHTML = ""; // Clear previous content
-                    dropZone.appendChild(img);
-
-                    // Update Pastebin with the new content
-                    await updatePastebin(dropZone.outerHTML);
-                };
-
-                reader.readAsDataURL(file);
-            } else {
-                alert("Please drop a valid image file.");
-            }
-        });
-
-        // Load initial content
-        loadContent();
+         (adsbygoogle = window.adsbygoogle || []).push({});
     </script>
+</div>
+
+<button onclick="alert('Thanks for visiting!')">Click Me</button>
+
+<script>
+    // Function to change the background image and fade it in
+    function changeBackgroundImage() {
+        fetch('https://cataas.com/cat')  // Fetch a random cat image
+            .then(response => response.blob())  // Convert the response to a Blob (binary data)
+            .then(imageBlob => {
+                const imageURL = URL.createObjectURL(imageBlob);  // Create a URL for the image
+                document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
+                document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
+                setTimeout(() => {
+                    document.body.style.opacity = 1;  // Slowly fade in the background
+                }, 100);
+            })
+            .catch(error => console.error('Error fetching cat image:', error));
+    }
+
+    // Change background image every 5 seconds
+    setInterval(changeBackgroundImage, 5000);
+
+    // Initial background change on page load
+    changeBackgroundImage();
+
+    // Function to randomize the color of each character in the body
+    function randomizeTextColors() {
+        const elements = document.querySelectorAll('body *'); // Select all elements in the body
+        elements.forEach(element => {
+            element.innerHTML = Array.from(element.innerHTML)
+                .map(char => `<span style="color: ${getRandomColor()}">${char}</span>`)
+                .join('');
+        });
+    }
+
+    // Function to generate a random color
+    function getRandomColor() {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    }
+
+    // Apply the color randomization on page load
+    window.onload = randomizeTextColors;
+</script>
+
 </body>
 </html>

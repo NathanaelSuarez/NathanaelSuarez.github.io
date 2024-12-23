@@ -130,17 +130,17 @@
 <script>
     // Function to change the background image and fade it in
     function changeBackgroundImage() {
-        fetch('https://cataas.com/cat')  // Fetch a random cat image
-            .then(response => response.blob())  // Convert the response to a Blob (binary data)
-            .then(imageBlob => {
-                const imageURL = URL.createObjectURL(imageBlob);  // Create a URL for the image
+        fetch('https://dog.ceo/api/breeds/image/random')  // Fetch a random dog image
+            .then(response => response.json())  // Parse the JSON response
+            .then(data => {
+                const imageURL = data.message;  // Extract the image URL from the response
                 document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
                 document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
                 setTimeout(() => {
                     document.body.style.opacity = 1;  // Slowly fade in the background
                 }, 100);
             })
-            .catch(error => console.error('Error fetching cat image:', error));
+            .catch(error => console.error('Error fetching dog image:', error));
     }
 
     // Change background image every 5 seconds
@@ -148,29 +148,6 @@
 
     // Initial background change on page load
     changeBackgroundImage();
-
-    // Function to randomize the color of each character in the body
-    function randomizeTextColors() {
-        const elements = document.querySelectorAll('body *'); // Select all elements in the body
-        elements.forEach(element => {
-            element.innerHTML = Array.from(element.innerHTML)
-                .map(char => `<span style="color: ${getRandomColor()}">${char}</span>`)
-                .join('');
-        });
-    }
-
-    // Function to generate a random color
-    function getRandomColor() {
-        const letters = '0123456789ABCDEF';
-        let color = '#';
-        for (let i = 0; i < 6; i++) {
-            color += letters[Math.floor(Math.random() * 16)];
-        }
-        return color;
-    }
-
-    // Apply the color randomization on page load
-    //window.onload = randomizeTextColors;
 </script>
 
 </body>

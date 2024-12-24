@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Online Piano</title>
+<style>
+  .key {
+    display: inline-block;
+    border: 1px solid black;
+    cursor: pointer;
+    user-select: none;
+    text-align: center;
+    padding-bottom: 20px; /* For text */
+    position: relative;
+  }
+
+  .white {
+    width: 50px;
+    height: 200px;
+    background-color: white;
+  }
+
+  .black {
+    width: 30px;
+    height: 120px;
+    background-color: black;
+    color: white;
+    margin-left: -15px;
+    margin-right: -15px;
+    z-index: 1;
+  }
+
+  .pressed {
+    background-color: #ccc; /* Example pressed color */
+  }
+
+  .black.pressed {
+    background-color: #333;
+  }
+</style>
+</head>
+<body>
+  <div id="piano">
+    <!-- Piano keys will be generated here -->
+  </div>
+
+  <script>
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const piano = document.getElementById('piano');
+    const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+    // Function to calculate frequency based on note and octave
+    function getFrequency(note, octave) {
+      const A4_FREQUENCY = 440;
+      const A4_INDEX = 69; // MIDI note number for A4
+      const noteIndex = notes.indexOf(note);
+      const noteNumber = 12 * octave + noteIndex + 12; // Adjust for octave 0
+      return A4_FREQUENCY * Math.pow(2, (noteNumber - A4_INDEX) / 12);
+    }
+
+    // Function to play a note
+    function playNote(frequency) {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'sine'; // You can experiment with 'square', 'sawtooth', 'triangle'
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.01); // Attack
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.start();
+
+      return { oscillator, gainNode };
+    }
+
+    // Function to stop a note
+    function stopNote(noteObject) {
+      if (noteObject) {
+        noteObject.gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1); // Release
+        setTimeout(() => {
+          noteObject.oscillator.stop();
+          noteObject.oscillator.disconnect();
+          noteObject.gainNode.disconnect();
+        }, 100);
+      }
+    }
+
+    let playingNotes = {}; // Keep track of currently playing notes
+
+    // Generate piano keys
+    let currentOctave = 4; // Start with octave 4
+    for (let i = 0; i < 7 * 3; i++) { // Generate roughly 3 octaves
+      const noteName = notes[i % 12];
+      const isSharp = noteName.includes('#');
+      const keyElement = document.createElement('div');
+      keyElement.classList.add('key');
+      keyElement.textContent = noteName.replace('#', '♯');
+
+      if (isSharp) {
+        keyElement.classList.add('black');
+      } else {
+        keyElement.classList.add('white');
+      }
+
+      const actualNoteName = noteName.replace('#', 'Sharp'); // For object key
+      const frequency = getFrequency(noteName.replace('#', ''), currentOctave);
+
+      keyElement.dataset.note = actualNoteName;
+      keyElement.dataset.octave = currentOctave;
+      keyElement.dataset.frequency = frequency;
+
+      keyElement.addEventListener('mousedown', function() {
+        this.classList.add('pressed');
+        playingNotes[actualNoteName + currentOctave] = playNote(parseFloat(this.dataset.frequency));
+      });
+
+      keyElement.addEventListener('mouseup', function() {
+        this.classList.remove('pressed');
+        stopNote(playingNotes[actualNoteName + currentOctave]);
+        delete playingNotes[actualNoteName + currentOctave];
+      });
+
+      keyElement.addEventListener('mouseleave', function() {
+        if (this.classList.contains('pressed')) {
+          this.classList.remove('pressed');
+          stopNote(playingNotes[actualNoteName + currentOctave]);
+          delete playingNotes[actualNoteName + currentOctave];
+        }
+      });
+
+      piano.appendChild(keyElement);
+
+      if (noteName === 'B') {
+        currentOctave++;
+      }
+    }
+  </script>
+</body>
+</html>

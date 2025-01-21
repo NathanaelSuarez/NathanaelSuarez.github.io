@@ -37,10 +37,14 @@
             margin: 0;
             color: #333;
             transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
+            background-size: cover; /* Ensures the image stretches to fill the screen */
+            background-position: center; /* Keeps the focal point in the center */
+            background-repeat: no-repeat; /* Avoids tiling the image */
+            background-attachment: fixed; /* Ensures the image stays in place during scroll */
+            height: 100vh; /* Ensures the body height fits the screen */
+            overflow: hidden; /* Prevents content spilling outside */
         }
+
 
         /* Wobbly font animation for the name */
         @keyframes wobble {

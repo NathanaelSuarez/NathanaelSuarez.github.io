@@ -37,13 +37,15 @@
             margin: 0;
             color: #333;
             transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
-            background-size: cover; /* Ensures the image stretches to fill the screen */
-            background-position: center; /* Keeps the focal point in the center */
-            background-repeat: no-repeat; /* Avoids tiling the image */
-            background-attachment: fixed; /* Ensures the image stays in place during scroll */
-            height: 100vh; /* Ensures the body height fits the screen */
-            overflow: hidden; /* Prevents content spilling outside */
+            background-size: 100% 100%; /* Stretch the image to fit the screen */
+            background-position: center; /* Keep the focus centered */
+            background-repeat: no-repeat; /* Prevent tiling */
+            background-attachment: fixed; /* Keep the image static during scrolling */
+            height: 100vh; /* Use 100% of the viewport height */
+            width: 100vw; /* Use 100% of the viewport width */
+            overflow: hidden; /* Prevent scrollbars */
         }
+
 
 
         /* Wobbly font animation for the name */

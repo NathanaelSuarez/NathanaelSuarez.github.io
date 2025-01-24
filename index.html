@@ -28,26 +28,34 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             backdrop-filter: blur(5px);
             z-index: 1000;
-            display: grid;
-            gap: 10px;
             width: 300px;
         }
 
         .control-group {
-            display: grid;
-            gap: 5px;
+            margin-bottom: 15px;
         }
 
         .control-group label {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: block;
+            margin-bottom: 8px;
             font-weight: 500;
             color: #333;
         }
 
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-container span {
+            font-weight: 600;
+            min-width: 30px;
+            text-align: right;
+        }
+
         input[type="range"] {
-            width: 100%;
+            width: 180px;
             accent-color: var(--primary-color);
         }
 
@@ -92,8 +100,14 @@
             backdrop-filter: blur(5px);
             z-index: 1000;
             display: flex;
-            gap: 15px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .progress-container {
+            display: flex;
             align-items: center;
+            gap: 15px;
         }
 
         .progress {
@@ -111,6 +125,11 @@
         }
 
         .counter {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .model-status {
             font-size: 0.9em;
             color: #666;
             font-weight: 500;
@@ -140,6 +159,10 @@
             color: white;
         }
 
+        button:hover {
+            opacity: 0.9;
+        }
+
         @media (min-width: 768px) {
             .image-grid {
                 grid-template-columns: repeat(4, 1fr);
@@ -151,33 +174,33 @@
 <body>
     <div class="controls">
         <div class="control-group">
-            <label>
-                Exploration Pool: 
-                <span id="poolValue">20</span>
-            </label>
-            <input type="range" id="poolSize" min="4" max="100" value="20">
+            <label>Training Interval</label>
+            <div class="slider-container">
+                <input type="range" id="trainingInterval" min="1" max="10" value="5">
+                <span id="trainingValue">5</span>
+            </div>
         </div>
-        
         <div class="control-group">
-            <label>
-                Train Every: 
-                <span id="trainingThresholdValue">10</span>
-            </label>
-            <input type="range" id="trainingThreshold" min="1" max="10" value="10">
+            <label>Exploration Pool</label>
+            <div class="slider-container">
+                <input type="range" id="poolSize" min="4" max="100" value="20">
+                <span id="poolValue">20</span>
+            </div>
         </div>
     </div>
 
     <div class="status-bar">
-        <div class="progress">
-            <div id="progressBar" class="progress-fill" style="width: 0%"></div>
-        </div>
-        <div class="counter">
-            Selections left: <span id="remainingSelections">10</span>
+        <div class="progress-container">
+            <div class="progress">
+                <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="counter" id="counter">0/5</div>
         </div>
         <div class="action-buttons">
             <button class="skip-btn" onclick="recommender.showNextSet(true)">Skip</button>
             <button class="clear-btn" onclick="clearAll()">Clear</button>
         </div>
+        <div id="modelStatus" class="model-status">Initializing...</div>
     </div>
 
     <div class="image-grid" id="imageContainer"></div>
@@ -190,7 +213,7 @@
                 this.embeddings = [];
                 this.currentSet = [];
                 this.poolSize = 20;
-                this.trainingThreshold = 10;
+                this.trainingInterval = 5;
                 this.loadSettings();
             }
 
@@ -198,7 +221,7 @@
                 try {
                     await this.loadEmbeddings();
                     this.showNextSet();
-                    this.updateProgress();
+                    this.updateCounter();
                 } catch (error) {
                     console.error('Initialization error:', error);
                 }
@@ -211,23 +234,12 @@
 
             loadSettings() {
                 this.poolSize = parseInt(localStorage.getItem('poolSize')) || 20;
-                this.trainingThreshold = parseInt(localStorage.getItem('trainingThreshold')) || 10;
+                this.trainingInterval = parseInt(localStorage.getItem('trainingInterval')) || 5;
                 
                 document.getElementById('poolSize').value = this.poolSize;
                 document.getElementById('poolValue').textContent = this.poolSize;
-                document.getElementById('trainingThreshold').value = this.trainingThreshold;
-                document.getElementById('trainingThresholdValue').textContent = this.trainingThreshold;
-            }
-
-            updateProgress() {
-                // Update progress bar
-                const currentProgress = this.history.length % this.trainingThreshold;
-                const progressPercent = ((currentProgress || this.trainingThreshold) / this.trainingThreshold) * 100;
-                document.getElementById('progressBar').style.width = `${progressPercent}%`;
-                
-                // Update remaining count
-                const remaining = this.trainingThreshold - currentProgress;
-                document.getElementById('remainingSelections').textContent = remaining || this.trainingThreshold;
+                document.getElementById('trainingInterval').value = this.trainingInterval;
+                document.getElementById('trainingValue').textContent = this.trainingInterval;
             }
 
             getRandomSubset() {
@@ -236,10 +248,30 @@
                     .slice(0, this.poolSize);
             }
 
+            covariance(x, y) {
+                const n = x.length;
+                const meanX = x.reduce((a, b) => a + b, 0) / n;
+                const meanY = y.reduce((a, b) => a + b, 0) / n;
+                return x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0) / n;
+            }
+
+            getTopFeatures(X, y, numFeatures = 1) {
+                const covariances = X[0].map((_, i) => {
+                    const xCol = X.map(row => row[i]);
+                    return this.covariance(xCol, y);
+                });
+                
+                return covariances
+                    .map((cov, i) => ({ index: i, cov: Math.abs(cov) }))
+                    .sort((a, b) => b.cov - a.cov)
+                    .slice(0, numFeatures)
+                    .map(f => f.index);
+            }
+
             trainModel() {
                 const X = this.model.data.map(entry => entry.embedding);
                 const y = this.model.data.map(entry => entry.selected);
-                const numParams = Math.floor(this.history.length / this.trainingThreshold);
+                const numParams = Math.floor(this.history.length / this.trainingInterval);
                 const features = this.getTopFeatures(X, y, numParams);
                 
                 const params = features.map(fi => {
@@ -251,14 +283,28 @@
                 localStorage.setItem('model', JSON.stringify(this.model));
             }
 
+            variance(arr) {
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                return arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length;
+            }
+
+            scoreImage(embedding) {
+                return this.model.params.reduce((sum, param) => 
+                    sum + param.coeff * embedding[param.feature], 0);
+            }
+
             showNextSet(skip = false) {
+                if (!skip) {
+                    this.updateProgress();
+                }
+
                 const container = document.getElementById('imageContainer');
                 container.innerHTML = '';
                 
                 const availableImages = this.getRandomSubset();
                 let candidates = [];
 
-                if (!skip && this.history.length >= this.trainingThreshold && this.model.params.length > 0) {
+                if (!skip && this.history.length >= this.trainingInterval && this.model.params.length > 0) {
                     candidates = availableImages
                         .map(img => ({ ...img, score: this.scoreImage(img.embedding) }))
                         .sort((a, b) => b.score - a.score)
@@ -279,12 +325,9 @@
                     imgElem.addEventListener('click', () => this.handleSelection(img));
                     container.appendChild(imgElem);
                 });
-
-                this.updateProgress();
             }
 
             handleSelection(selectedImg) {
-                // Update model data
                 const timestamp = Date.now();
                 this.currentSet.forEach(img => {
                     this.model.data.push({
@@ -297,28 +340,39 @@
                 this.history.push(selectedImg.path);
                 localStorage.setItem('history', JSON.stringify(this.history));
                 
-                // Keep last 200 entries
                 if (this.model.data.length > 200) {
                     this.model.data = this.model.data.slice(-200);
                 }
 
-                // Retrain when reaching threshold
-                if (this.history.length % this.trainingThreshold === 0) {
+                this.updateModelStatus();
+                this.updateCounter();
+
+                if (this.history.length % this.trainingInterval === 0) {
                     this.trainModel();
                 }
 
                 this.showNextSet();
-                this.updateProgress();
             }
 
-            // ... (keep existing covariance, getTopFeatures, variance, scoreImage methods)
+            updateProgress() {
+                const progress = (this.history.length % this.trainingInterval) / this.trainingInterval * 100;
+                document.getElementById('progressBar').style.width = `${progress}%`;
+            }
+
+            updateCounter() {
+                const remaining = this.trainingInterval - (this.history.length % this.trainingInterval);
+                document.getElementById('counter').textContent = `${remaining}/${this.trainingInterval}`;
+            }
+
+            updateModelStatus() {
+                document.getElementById('modelStatus').textContent = this.model.params.length > 0 
+                    ? `Model active (${this.model.params.length} features)` 
+                    : "Exploring randomly";
+            }
         }
 
         function clearAll() {
-            localStorage.removeItem('history');
-            localStorage.removeItem('model');
-            localStorage.removeItem('poolSize');
-            localStorage.removeItem('trainingThreshold');
+            localStorage.clear();
             location.reload();
         }
 
@@ -331,14 +385,14 @@
             document.getElementById('poolValue').textContent = value;
             recommender.poolSize = value;
             localStorage.setItem('poolSize', value.toString());
-            recommender.showNextSet();
         });
 
-        document.getElementById('trainingThreshold').addEventListener('input', (e) => {
+        document.getElementById('trainingInterval').addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
-            document.getElementById('trainingThresholdValue').textContent = value;
-            recommender.trainingThreshold = value;
-            localStorage.setItem('trainingThreshold', value.toString());
+            document.getElementById('trainingValue').textContent = value;
+            recommender.trainingInterval = value;
+            localStorage.setItem('trainingInterval', value.toString());
+            recommender.updateCounter();
             recommender.updateProgress();
         });
 

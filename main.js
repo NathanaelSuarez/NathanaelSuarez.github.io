@@ -120,26 +120,21 @@ class Recommender {
       const imgElem = document.createElement('div');
       imgElem.className = 'image-item';
       imgElem.innerHTML = `
-                <img src="/files/unsplashy/${img.path}"
-                     alt="Recommendation"
-                     onerror="this.style.display='none'">
-            `;
-      imgElem.addEventListener('click', () => {
-        // Keep click handler for potential selection later
-        if (!skip) {
-          // Only handle selection logic if not skipping
-          this.handleSelection(img);
-        }
-      });
+            <img src="/files/unsplashy/${img.path}"
+                 alt="Recommendation"
+                 onerror="this.style.display='none'">
+        `;
+      // Modified click handler - removed skip check
+      imgElem.addEventListener('click', () => this.handleSelection(img));
       container.appendChild(imgElem);
     });
 
     if (!skip) {
-      // Only update progress, counter, and model status if not skipping
+      // Only update progress, counter if not skipping
       this.updateProgress();
       this.updateCounter();
     }
-    this.updateModelStatus(); // Still update model status to reflect current state
+    this.updateModelStatus();
   }
 
   handleSelection(selectedImg) {

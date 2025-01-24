@@ -7,7 +7,7 @@ class Recommender {
     };
     this.embeddings = [];
     this.currentSet = [];
-    this.poolSize = 20;
+    this.poolSize = 50;
     this.trainingInterval = 5;
     this.loadSettings();
   }
@@ -28,7 +28,7 @@ class Recommender {
   }
 
   loadSettings() {
-    this.poolSize = parseInt(localStorage.getItem('poolSize')) || 20;
+    this.poolSize = parseInt(localStorage.getItem('poolSize')) || 50;
     this.trainingInterval =
       parseInt(localStorage.getItem('trainingInterval')) || 5;
 
@@ -120,7 +120,7 @@ class Recommender {
       const imgElem = document.createElement('div');
       imgElem.className = 'image-item';
       imgElem.innerHTML = `
-                <img src="/${img.path}"
+                <img src="/files/unsplashy/${img.path}"
                      alt="Recommendation"
                      onerror="this.style.display='none'">
             `;
@@ -155,8 +155,8 @@ class Recommender {
     this.history.push(selectedImg.path);
     localStorage.setItem('history', JSON.stringify(this.history));
 
-    if (this.model.data.length > 200) {
-      this.model.data = this.model.data.slice(-200);
+    if (this.model.data.length > 100) {
+      this.model.data = this.model.data.slice(-100);
     }
 
     this.updateModelStatus();

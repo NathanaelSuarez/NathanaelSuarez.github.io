@@ -25,7 +25,7 @@ class Recommender {
     }
 
     loadSettings() {
-        this.poolSize = parseInt(localStorage.getItem('poolSize')) || 20;
+        this.poolSize = parseInt(localStorage.getItem('poolSize')) || 50;
         this.trainingInterval = parseInt(localStorage.getItem('trainingInterval')) || 5;
         
         document.getElementById('poolSize').value = this.poolSize;

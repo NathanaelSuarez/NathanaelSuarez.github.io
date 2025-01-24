@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLIP Image Recommender</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --background-color: #f5f5f5;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 80px 20px 20px;
+            background-color: var(--background-color);
+        }
+
+        .controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+
+        .controls label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        #poolSize {
+            width: 180px;
+            vertical-align: middle;
+            accent-color: var(--primary-color);
+        }
+
+        #poolValue {
+            margin-left: 10px;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .image-item {
+            position: relative;
+            cursor: pointer;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            aspect-ratio: 1;
+            background: #fff;
+        }
+
+        .image-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: opacity 0.2s ease;
+        }
+
+        .image-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .status-bar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+
+        .progress {
+            height: 8px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
+        .model-status {
+            margin-top: 8px;
+            font-size: 0.9em;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        @media (min-width: 768px) {
+            .image-grid {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <label for="poolSize">Exploration Pool Size: <span id="poolValue">20</span></label>
+        <input type="range" id="poolSize" min="4" max="100" value="20">
+    </div>
+
+    <div class="status-bar">
+        <div class="progress">
+            <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="modelStatus" class="model-status">Initializing...</div>
+    </div>
+
+    <div class="image-grid" id="imageContainer"></div>
+
+    <script>
+        class Recommender {
+            constructor() {
+                this.history = JSON.parse(localStorage.getItem('history')) || [];
+                this.model = JSON.parse(localStorage.getItem('model')) || { params: [], data: [] };
+                this.embeddings = [];
+                this.currentSet = [];
+                this.poolSize = 20;
+                this.loadPoolSize();
+            }
+
+            async init() {
+                try {
+                    await this.loadEmbeddings();
+                    this.showNextSet();
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                }
+            }
+
+            async loadEmbeddings() {
+                const response = await fetch('/files/embeddings.json');
+                this.embeddings = await response.json();
+            }
+
+            getRandomSubset() {
+                return [...this.embeddings]
+                    .sort(() => Math.random() - 0.5)
+                    .slice(0, this.poolSize);
+            }
+
+            covariance(x, y) {
+                const n = x.length;
+                const meanX = x.reduce((a, b) => a + b, 0) / n;
+                const meanY = y.reduce((a, b) => a + b, 0) / n;
+                return x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0) / n;
+            }
+
+            getTopFeatures(X, y, numFeatures = 1) {
+                const covariances = X[0].map((_, i) => {
+                    const xCol = X.map(row => row[i]);
+                    return this.covariance(xCol, y);
+                });
+                
+                return covariances
+                    .map((cov, i) => ({ index: i, cov: Math.abs(cov) }))
+                    .sort((a, b) => b.cov - a.cov)
+                    .slice(0, numFeatures)
+                    .map(f => f.index);
+            }
+
+            trainModel() {
+                const X = this.model.data.map(entry => entry.embedding);
+                const y = this.model.data.map(entry => entry.selected);
+                const numParams = Math.floor(this.history.length / 10);
+                const features = this.getTopFeatures(X, y, numParams);
+                
+                const params = features.map(fi => {
+                    const xCol = X.map(row => row[fi]);
+                    return this.covariance(xCol, y) / this.variance(xCol);
+                });
+                
+                this.model.params = params.map((p, i) => ({ coeff: p, feature: features[i] }));
+                localStorage.setItem('model', JSON.stringify(this.model));
+            }
+
+            variance(arr) {
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                return arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length;
+            }
+
+            scoreImage(embedding) {
+                return this.model.params.reduce((sum, param) => 
+                    sum + param.coeff * embedding[param.feature], 0);
+            }
+
+            showNextSet() {
+                const container = document.getElementById('imageContainer');
+                container.innerHTML = '';
+                
+                const availableImages = this.getRandomSubset();
+                let candidates = [];
+
+                if (this.history.length >= 10 && this.model.params.length > 0) {
+                    candidates = availableImages
+                        .map(img => ({ ...img, score: this.scoreImage(img.embedding) }))
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 4);
+                } else {
+                    candidates = availableImages.sort(() => Math.random() - 0.5).slice(0, 4);
+                }
+
+                this.currentSet = candidates;
+                candidates.forEach(img => {
+                    const imgElem = document.createElement('div');
+                    imgElem.className = 'image-item';
+                    imgElem.innerHTML = `
+                        <img src="/${img.path}" 
+                             alt="Recommendation" 
+                             onerror="this.style.display='none'">
+                    `;
+                    imgElem.addEventListener('click', () => this.handleSelection(img));
+                    container.appendChild(imgElem);
+                });
+            }
+
+            handleSelection(selectedImg) {
+                // Update progress
+                const progressBar = document.getElementById('progressBar');
+                const totalClicks = this.history.length + 1;
+                progressBar.style.width = `${(totalClicks/20)*100}%`;
+
+                // Update model data
+                const timestamp = Date.now();
+                this.currentSet.forEach(img => {
+                    this.model.data.push({
+                        embedding: img.embedding,
+                        selected: img.path === selectedImg.path ? 1 : 0,
+                        timestamp
+                    });
+                });
+
+                this.history.push(selectedImg.path);
+                localStorage.setItem('history', JSON.stringify(this.history));
+                
+                // Keep last 200 entries
+                if (this.model.data.length > 200) {
+                    this.model.data = this.model.data.slice(-200);
+                }
+
+                // Update model status
+                const statusElem = document.getElementById('modelStatus');
+                statusElem.textContent = this.model.params.length > 0 
+                    ? `Model active (${this.model.params.length} features learned)` 
+                    : "Exploring randomly";
+
+                // Retrain every 10 clicks
+                if (totalClicks % 10 === 0) {
+                    this.trainModel();
+                }
+
+                this.showNextSet();
+            }
+
+            loadPoolSize() {
+                const savedSize = localStorage.getItem('poolSize');
+                if (savedSize) {
+                    this.poolSize = parseInt(savedSize);
+                    document.getElementById('poolSize').value = this.poolSize;
+                    document.getElementById('poolValue').textContent = this.poolSize;
+                }
+            }
+        }
+
+        // Initialize
+        const recommender = new Recommender();
+        document.getElementById('poolSize').addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            document.getElementById('poolValue').textContent = value;
+            recommender.poolSize = value;
+            localStorage.setItem('poolSize', value.toString());
+        });
+
+        window.addEventListener('DOMContentLoaded', () => recommender.init());
+    </script>
+</body>
+</html>

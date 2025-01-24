@@ -14,7 +14,7 @@ It uses AI (machine learning) to learn to show you images that you are likely to
 
 
 
-**I used Unsplash for the images because they are a great platform that delivers on their original mission**
+**I used Unsplash for the images because they are a great platform that delivers on their original mission statement**
 
 
 

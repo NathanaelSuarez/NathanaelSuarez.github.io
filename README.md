@@ -1,4 +1,4 @@
-# Nathanael C. Suarez's Website
+# Nathanael's Website
 
 This website is meant to suggest pictures to **you**.
 It uses AI (machine learning) to learn to show you images that you are likely click.

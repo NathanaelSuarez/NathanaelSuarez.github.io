@@ -132,8 +132,8 @@ class Recommender {
         this.history.push(selectedImg.path);
         localStorage.setItem('history', JSON.stringify(this.history));
         
-        if (this.model.data.length > 200) {
-            this.model.data = this.model.data.slice(-200);
+        if (this.model.data.length > 30) {
+            this.model.data = this.model.data.slice(-30);
         }
 
         this.updateModelStatus();

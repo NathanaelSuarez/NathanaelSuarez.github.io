@@ -8,12 +8,13 @@
         :root {
             --primary-color: #4CAF50;
             --background-color: #f5f5f5;
+            --danger-color: #f44336;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 80px 20px 20px;
+            padding: 100px 20px 20px;
             background-color: var(--background-color);
         }
 
@@ -88,6 +89,9 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             backdrop-filter: blur(5px);
             z-index: 1000;
+            display: flex;
+            gap: 15px;
+            align-items: center;
         }
 
         .progress {
@@ -95,6 +99,7 @@
             background: rgba(0,0,0,0.1);
             border-radius: 4px;
             overflow: hidden;
+            flex: 1;
         }
 
         .progress-fill {
@@ -110,13 +115,32 @@
             font-weight: 500;
         }
 
-        .loading {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 1.2em;
-            color: #666;
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s ease;
+        }
+
+        .skip-btn {
+            background-color: #666;
+            color: white;
+        }
+
+        .clear-btn {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
         }
 
         @media (min-width: 768px) {
@@ -136,6 +160,10 @@
     <div class="status-bar">
         <div class="progress">
             <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div class="action-buttons">
+            <button class="skip-btn" onclick="recommender.showNextSet(true)">Skip</button>
+            <button class="clear-btn" onclick="clearAll()">Clear</button>
         </div>
         <div id="modelStatus" class="model-status">Initializing...</div>
     </div>
@@ -218,14 +246,20 @@
                     sum + param.coeff * embedding[param.feature], 0);
             }
 
-            showNextSet() {
+            showNextSet(skip = false) {
+                if (!skip) {
+                    // Only update progress for non-skip actions
+                    const progressBar = document.getElementById('progressBar');
+                    progressBar.style.width = `${(this.history.length/20)*100}%`;
+                }
+
                 const container = document.getElementById('imageContainer');
                 container.innerHTML = '';
                 
                 const availableImages = this.getRandomSubset();
                 let candidates = [];
 
-                if (this.history.length >= 10 && this.model.params.length > 0) {
+                if (!skip && this.history.length >= 10 && this.model.params.length > 0) {
                     candidates = availableImages
                         .map(img => ({ ...img, score: this.scoreImage(img.embedding) }))
                         .sort((a, b) => b.score - a.score)
@@ -249,11 +283,6 @@
             }
 
             handleSelection(selectedImg) {
-                // Update progress
-                const progressBar = document.getElementById('progressBar');
-                const totalClicks = this.history.length + 1;
-                progressBar.style.width = `${(totalClicks/20)*100}%`;
-
                 // Update model data
                 const timestamp = Date.now();
                 this.currentSet.forEach(img => {
@@ -279,7 +308,7 @@
                     : "Exploring randomly";
 
                 // Retrain every 10 clicks
-                if (totalClicks % 10 === 0) {
+                if (this.history.length % 10 === 0) {
                     this.trainModel();
                 }
 
@@ -294,6 +323,13 @@
                     document.getElementById('poolValue').textContent = this.poolSize;
                 }
             }
+        }
+
+        function clearAll() {
+            localStorage.removeItem('history');
+            localStorage.removeItem('model');
+            localStorage.removeItem('poolSize');
+            location.reload();
         }
 
         // Initialize

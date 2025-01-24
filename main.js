@@ -4,7 +4,7 @@ class Recommender {
         this.model = JSON.parse(localStorage.getItem('model')) || { params: [], data: [] };
         this.embeddings = [];
         this.currentSet = [];
-        this.poolSize = 20;
+        this.poolSize = 50;
         this.trainingInterval = 5;
         this.loadSettings();
     }

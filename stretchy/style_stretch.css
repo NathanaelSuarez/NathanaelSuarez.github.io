@@ -1,0 +1,5 @@
+/* We'll keep this minimal since Three.js creates its own canvas */
+body {
+    touch-action: none;
+    user-select: none;
+}

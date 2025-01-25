@@ -2,12 +2,13 @@
 let scene, camera, renderer, sphereMesh, sphereBody;
 let mouseDown = false, lastMouseX = 0, lastMouseY = 0;
 let clock = new THREE.Clock();
-// let world; // Removed Cannon.js
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 let intersectedPoint = new THREE.Vector3();
-let originalVertices = []; // Store original vertex positions
-let grabbedVertexIndex = -1; // Index of the vertex being grabbed
+let originalVertices = [];
+let grabbedVertexIndex = -1;
+let isReturningToOriginal = false;
+let returnSpeed = 0.05; // Adjust for return speed
 
 
 init();
@@ -54,21 +55,7 @@ function init() {
     scene.add(sphereMesh);
 
     // Store original vertices
-    originalVertices = geometry.attributes.position.array.slice(); // Copy the array
-
-
-    // Cannon.js Physics Setup (removed)
-    // world = new CANNON.World();
-    // world.gravity.set(0, 0, 0);
-    // world.solver.iterations = 20;
-    // sphereBody = new CANNON.Body({
-    //     mass: 1,
-    //     shape: new CANNON.Sphere(1),
-    //     material: new CANNON.Material({ restitution: 0.5 }),
-    //     linearDamping: 0.2,
-    //     angularDamping: 0.2
-    // });
-    // world.addBody(sphereBody);
+    originalVertices = geometry.attributes.position.array.slice();
 
     camera.position.z = 5;
 
@@ -82,6 +69,7 @@ function onMouseDown(event) {
     mouseDown = true;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
+    isReturningToOriginal = false; // Stop any ongoing return animation
 
     mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
     mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
@@ -103,60 +91,109 @@ function onMouseDown(event) {
 
             if (distanceSq < minDistanceSq) {
                 minDistanceSq = distanceSq;
-                grabbedVertexIndex = i / 3; // Store vertex index
+                grabbedVertexIndex = i / 3;
             }
         }
     }
 }
 
 function onMouseMove(event) {
-    if (!mouseDown || grabbedVertexIndex === -1) return; // Only move if mouse down and vertex grabbed
+    if (!mouseDown || grabbedVertexIndex === -1) return;
 
     mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
     mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
 
     raycaster.setFromCamera( mouse, camera );
-    const planeNormal = new THREE.Vector3(0, 0, 1).transformDirection(camera.matrixWorld); // Plane normal facing camera
-    const plane = new THREE.Plane(planeNormal, 0); // Plane at distance 0 from camera origin
-
+    const planeNormal = new THREE.Vector3(0, 0, 1).transformDirection(camera.matrixWorld);
+    const plane = new THREE.Plane(planeNormal, 0);
     const intersectPoint = new THREE.Vector3();
     raycaster.ray.intersectPlane(plane, intersectPoint);
 
-
     const positions = sphereMesh.geometry.attributes.position.array;
-    const index = grabbedVertexIndex * 3;
+    const originalPositions = originalVertices; // Use originalVertices for calculations
+    const vertexCount = sphereMesh.geometry.attributes.position.count;
 
-    // Get original vertex position
-    const originalVertex = new THREE.Vector3(originalVertices[index], originalVertices[index + 1], originalVertices[index + 2]);
-    const worldOriginalVertex = originalVertex.clone().applyMatrix4(sphereMesh.matrixWorld);
+    // Get original grabbed vertex position (world space)
+    const originalGrabbedVertex = new THREE.Vector3(originalPositions[grabbedVertexIndex * 3], originalPositions[grabbedVertexIndex * 3 + 1], originalPositions[grabbedVertexIndex * 3 + 2]);
+    const worldOriginalGrabbedVertex = originalGrabbedVertex.clone().applyMatrix4(sphereMesh.matrixWorld);
 
-    // Calculate the displacement based on mouse movement in world space
+    // Calculate displacement based on mouse movement in world space, relative to the *original grabbed vertex position*
     const displacement = intersectPoint.clone().sub(intersectedPoint);
 
 
-    // Apply displacement to the grabbed vertex (in local space)
-    const modifiedVertex = worldOriginalVertex.clone().add(displacement).applyMatrix4(sphereMesh.matrixWorld.invert()); // Transform back to local space
+    const influenceRadius = 1.5; // Radius of influence for stretching
+    const falloffPower = 2.0;     // Controls how quickly the influence falls off
+
+    for (let i = 0; i < vertexCount; i++) {
+        const index = i * 3;
+        const originalVertex = new THREE.Vector3(originalPositions[index], originalPositions[index + 1], originalPositions[index + 2]);
+        const worldOriginalVertex = originalVertex.clone().applyMatrix4(sphereMesh.matrixWorld);
+
+        const distanceToClickSq = intersectedPoint.distanceToSquared(worldOriginalVertex); // Distance to the *click point*
+
+        let falloff = 0;
+        if (distanceToClickSq < influenceRadius * influenceRadius) {
+            falloff = Math.exp(-distanceToClickSq / (2 * (influenceRadius/3) * (influenceRadius/3))); // Gaussian falloff
+        }
 
 
-    positions[index] = modifiedVertex.x;
-    positions[index + 1] = modifiedVertex.y;
-    positions[index + 2] = modifiedVertex.z;
+        // Apply displacement with falloff
+        const modifiedVertex = worldOriginalVertex.clone();
+        modifiedVertex.add(displacement.clone().multiplyScalar(falloff));
 
-    sphereMesh.geometry.attributes.position.needsUpdate = true; // Important: Update the vertex buffer
-    sphereMesh.geometry.computeVertexNormals(); // Recompute normals for lighting
+        const localModifiedVertex = modifiedVertex.applyMatrix4(sphereMesh.matrixWorld.invert()); // Back to local space
+
+        positions[index] = localModifiedVertex.x;
+        positions[index + 1] = localModifiedVertex.y;
+        positions[index + 2] = localModifiedVertex.z;
+    }
+
+    sphereMesh.geometry.attributes.position.needsUpdate = true;
+    sphereMesh.geometry.computeVertexNormals();
 }
 
 function onMouseUp() {
     mouseDown = false;
-    grabbedVertexIndex = -1; // Reset grabbed vertex
-
-    // In a more advanced version, you would smoothly return the sphere to its original shape here.
-    // For now, it will just snap back when you click again.
+    grabbedVertexIndex = -1;
+    isReturningToOriginal = true; // Start returning to original shape
 }
 
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
+
+    if (isReturningToOriginal) {
+        const positions = sphereMesh.geometry.attributes.position.array;
+        const originalPositions = originalVertices;
+        let stillReturning = false; // Flag to check if any vertex is still moving
+
+        for (let i = 0; i < sphereMesh.geometry.attributes.position.count; i++) {
+            const index = i * 3;
+            const currentVertex = new THREE.Vector3(positions[index], positions[index + 1], positions[index + 2]);
+            const targetVertex = new THREE.Vector3(originalPositions[index], originalPositions[index + 1], originalPositions[index + 2]);
+
+            if (currentVertex.distanceToSquared(targetVertex) > 0.0001) { // Check if vertex is far enough from target
+                currentVertex.lerp(targetVertex, returnSpeed); // Move towards original position
+                positions[index] = currentVertex.x;
+                positions[index + 1] = currentVertex.y;
+                positions[index + 2] = currentVertex.z;
+                stillReturning = true; // Indicate that vertices are still moving
+            } else {
+                // Vertex is close enough to original, snap to original to avoid tiny movements forever
+                positions[index] = targetVertex.x;
+                positions[index + 1] = targetVertex.y;
+                positions[index + 2] = targetVertex.z;
+            }
+        }
+
+        sphereMesh.geometry.attributes.position.needsUpdate = true;
+        sphereMesh.geometry.computeVertexNormals();
+
+        if (!stillReturning) {
+            isReturningToOriginal = false; // Stop returning when all vertices are close to original
+        }
+    }
+
 
     // Update shader uniform
     if (sphereMesh.material.userData.shader) {

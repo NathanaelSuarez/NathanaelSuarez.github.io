@@ -17,7 +17,7 @@ body {
     right: 10px;
     background: rgba(255, 255, 255, 0.95);
     padding: 15px;
-    border-radius: 10px;
+    /*border-radius: 10px;*/
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     backdrop-filter: blur(5px);
     z-index: 1000;
@@ -63,7 +63,7 @@ input[type="range"] {
 .image-item {
     position: relative;
     cursor: pointer;
-    border-radius: 8px;
+    /*border-radius: 8px;*/
     overflow: hidden;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     aspect-ratio: 1;
@@ -88,7 +88,7 @@ input[type="range"] {
     left: 10px;
     background: rgba(255, 255, 255, 0.95);
     padding: 15px;
-    border-radius: 10px;
+    /*border-radius: 10px;*/
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     backdrop-filter: blur(5px);
     z-index: 1000;

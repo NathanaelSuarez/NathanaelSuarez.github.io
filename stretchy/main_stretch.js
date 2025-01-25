@@ -21,13 +21,12 @@ function init() {
     scene.add(light);
     scene.add(new THREE.AmbientLight(0x404040));
 
-    // High-poly sphere (64 segments)
+    // High-poly sphere with custom shader
     const geometry = new THREE.SphereGeometry(1, 64, 64);
     const material = new THREE.MeshPhongMaterial({
         color: 0xff0000,
         shininess: 100,
         onBeforeCompile: (shader) => {
-            // Custom vertex shader for wobble effect
             shader.vertexShader = `
                 uniform float time;
                 varying vec3 vPosition;
@@ -50,22 +49,22 @@ function init() {
 
     // Cannon.js Physics Setup
     world = new CANNON.World();
-    world.gravity.set(0, 0, 0); // Zero gravity for floating effect
-    world.solver.iterations = 20; // Higher for better softness
+    world.gravity.set(0, 0, 0);
+    world.solver.iterations = 20;
 
-    // Physics body
+    // Physics body with damping
     sphereBody = new CANNON.Body({
         mass: 1,
         shape: new CANNON.Sphere(1),
         material: new CANNON.Material({ restitution: 0.5 }),
-        damping: 0.2 // Slows down over time
+        linearDamping: 0.2,
+        angularDamping: 0.2
     });
     world.addBody(sphereBody);
 
-    // Position camera
     camera.position.z = 5;
 
-    // Mouse event listeners
+    // Event Listeners
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -83,9 +82,10 @@ function onMouseMove(event) {
     const deltaX = event.clientX - lastMouseX;
     const deltaY = event.clientY - lastMouseY;
 
-    // Apply force relative to mouse movement
+    // Apply force with proper point parameter
     const force = new CANNON.Vec3(deltaX * 0.01, -deltaY * 0.01, 0);
-    sphereBody.applyLocalForce(force);
+    const localPoint = new CANNON.Vec3(0, 0, 0); // Force application point
+    sphereBody.applyLocalForce(force, localPoint);
 
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
@@ -99,14 +99,14 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
 
-    // Update physics
+    // Update physics world
     world.step(1/60, delta);
 
-    // Sync mesh with physics body
+    // Sync Three.js mesh with physics body
     sphereMesh.position.copy(sphereBody.position);
     sphereMesh.quaternion.copy(sphereBody.quaternion);
 
-    // Update wobble shader
+    // Update shader uniform
     if (sphereMesh.material.userData.shader) {
         sphereMesh.material.userData.shader.uniforms.time = {
             value: performance.now() / 1000
@@ -116,7 +116,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Handle window resize
+// Window resize handler
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();

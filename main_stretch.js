@@ -13,7 +13,7 @@ let grabbedVertexIndex = -1;
 // New physics parameters
 const VERTEX_MASS = 1.0;
 const SPRING_CONSTANT = 80;
-const DAMPING_CONSTANT = 2;
+const DAMPING_CONSTANT = 1.3;
 
 class VertexState {
     constructor() {

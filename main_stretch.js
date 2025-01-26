@@ -54,7 +54,8 @@ function init() {
     scene.add(new THREE.AmbientLight(0x404040));
 
     // Sphere geometry with UV-mapped texture
-    const geometry = new THREE.SphereGeometry(1, 48, 48); // Reduced resolution for performance
+    let geometry = new THREE.BoxGeometry( 2, 2, 2, 10, 10, 10 ); // Reduced resolution for performance
+    geometry = mergeVertices(geometry); // Call mergeVertices here
     const material = new THREE.MeshPhongMaterial({
         shininess: 100,
         onBeforeCompile: (shader) => {
@@ -73,18 +74,18 @@ function init() {
             shader.fragmentShader = `
                 varying vec2 vUv;
                 uniform float time;
-                
+
                 vec3 hsv2rgb(vec3 c) {
                     vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
                     vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
                     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
                 }
-                
+
                 ${shader.fragmentShader}
             `.replace(
                 `vec4 diffuseColor = vec4( diffuse, opacity );`,
                 `
-                float hue = fract(vUv.x * 15.0 + vUv.y * 10.0 + time * 0.5);
+                float hue = fract(vUv.x * 10.0 + vUv.y * 1.0 + time * 0.5);
                 vec3 hsvColor = vec3(hue, 0.9, 1.0);
                 vec3 rgbColor = hsv2rgb(hsvColor);
                 vec4 diffuseColor = vec4(rgbColor, opacity);
@@ -105,7 +106,8 @@ function init() {
     originalVertices = geometry.attributes.position.array.slice();
     initializeVertexStates(geometry);
 
-    camera.position.z = 5;
+    camera.position.set(3, 3, 3);  // x, y, z coordinates
+    camera.lookAt(scene.position); // Ensure camera points to scene center
 
     // Event Listeners
     document.addEventListener('mousedown', onMouseDown);
@@ -113,15 +115,95 @@ function init() {
     document.addEventListener('mouseup', onMouseUp);
 }
 
+
+
+function mergeVertices(geometry, tolerance = 1e-6) {
+    tolerance = Math.max(tolerance, Number.EPSILON);
+
+    const positions = geometry.attributes.position.array;
+    const uvs = geometry.attributes.uv ? geometry.attributes.uv.array : null; // Get UVs if they exist
+    const vertexMap = {}; // Hashmap for position to index and UVs
+    const uniqueVertices = [];
+    let newIndices = []; // No need to initialize as const if re-assigned
+    const indexArray = geometry.index ? geometry.index.array : null;
+
+    const indices = indexArray ? indexArray : Array.from({ length: positions.length / 3 }, (_, i) => i);
+
+    for (let i = 0; i < indices.length; i++) {
+        const index = indices[i];
+        const vx = positions[index * 3];
+        const vy = positions[index * 3 + 1];
+        const vz = positions[index * 3 + 2];
+
+        const key = `${vx.toFixed(6)}_${vy.toFixed(6)}_${vz.toFixed(6)}`; // Use toFixed for precision
+
+        if (vertexMap[key] === undefined) {
+            vertexMap[key] = {
+                index: uniqueVertices.length,
+                uvs: [] // Store UVs for averaging
+            };
+            uniqueVertices.push(new THREE.Vector3(vx, vy, vz));
+            if (uvs) {
+                vertexMap[key].uvs.push({ u: uvs[index * 2], v: uvs[index * 2 + 1] }); // Store initial UV
+            }
+            newIndices.push(vertexMap[key].index);
+        } else {
+            newIndices.push(vertexMap[key].index);
+            if (uvs) {
+                vertexMap[key].uvs.push({ u: uvs[index * 2], v: uvs[index * 2 + 1] }); // Collect UVs to average
+            }
+        }
+    }
+
+    const positionAttribute = new THREE.Float32BufferAttribute(uniqueVertices.length * 3, 3);
+    for (let i = 0; i < uniqueVertices.length; i++) {
+        positionAttribute.setXYZ(i, uniqueVertices[i].x, uniqueVertices[i].y, uniqueVertices[i].z);
+    }
+    geometry.setAttribute('position', positionAttribute);
+
+    if (uvs) {
+        const averagedUvs = [];
+        for (const key in vertexMap) {
+            if (vertexMap.hasOwnProperty(key)) {
+                const uvData = vertexMap[key].uvs;
+                let totalU = 0;
+                let totalV = 0;
+                for (const uv of uvData) {
+                    totalU += uv.u;
+                    totalV += uv.v;
+                }
+                const averageU = totalU / uvData.length;
+                const averageV = totalV / uvData.length;
+                averagedUvs[vertexMap[key].index] = new THREE.Vector2(averageU, averageV);
+            }
+        }
+
+        const uvAttribute = new THREE.Float32BufferAttribute(uniqueVertices.length * 2, 2);
+        for (let i = 0; i < uniqueVertices.length; i++) {
+            uvAttribute.setXY(i, averagedUvs[i].x, averagedUvs[i].y);
+        }
+        geometry.setAttribute('uv', uvAttribute);
+    }
+
+
+    geometry.setIndex(newIndices); // Set new index buffer
+    // geometry.index = new THREE.BufferAttribute(new Uint32Array(newIndices), 1); // Redundant line removed
+
+    geometry.computeVertexNormals(); // Recompute normals based on merged vertices
+    geometry.computeBoundingSphere();
+    return geometry;
+}
+
+
 function initializeVertexStates(geometry) {
     vertexStates = [];
     const positionAttribute = geometry.attributes.position;
     const indexArray = geometry.index.array;
+    const uniqueVertexCount = positionAttribute.count; // Use the count of unique vertices
 
-    // Build neighbor map using triangle relationships
-    const neighborMap = new Array(positionAttribute.count).fill().map(() => new Set());
+    // Build neighbor map using triangle relationships based on the new index
+    const neighborMap = new Array(uniqueVertexCount).fill().map(() => new Set());
 
-    // Process each triangle to establish vertex neighbors
     for (let i = 0; i < indexArray.length; i += 3) {
         const a = indexArray[i];
         const b = indexArray[i + 1];
@@ -136,7 +218,7 @@ function initializeVertexStates(geometry) {
     }
 
     // Initialize vertex states with proper neighbors
-    for (let i = 0; i < positionAttribute.count; i++) {
+    for (let i = 0; i < uniqueVertexCount; i++) {
         const state = new VertexState();
         state.neighbors = Array.from(neighborMap[i]);
         vertexStates.push(state);

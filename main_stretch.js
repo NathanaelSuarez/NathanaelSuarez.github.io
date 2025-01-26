@@ -109,12 +109,16 @@ function init() {
     camera.position.set(3, 3, 3);  // x, y, z coordinates
     camera.lookAt(scene.position); // Ensure camera points to scene center
 
-    // Event Listeners
+    // Event Listeners for Mouse
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-}
 
+    // Event Listeners for Touch
+    document.addEventListener('touchstart', onTouchStart);
+    document.addEventListener('touchmove', onTouchMove);
+    document.addEventListener('touchend', onTouchEnd);
+}
 
 
 function mergeVertices(geometry, tolerance = 1e-6) {
@@ -283,6 +287,37 @@ function onMouseUp() {
     mouseDown = false;
     grabbedVertexIndex = -1;
 }
+
+// Touch event handlers
+function onTouchStart(event) {
+    event.preventDefault(); // Prevent page scroll on touch
+    if (event.touches.length > 0) {
+        const touch = event.touches[0];
+        const simulatedEvent = {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        };
+        onMouseDown(simulatedEvent);
+    }
+}
+
+function onTouchMove(event) {
+    event.preventDefault(); // Prevent page scroll on touch
+    if (event.touches.length > 0) {
+        const touch = event.touches[0];
+        const simulatedEvent = {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        };
+        onMouseMove(simulatedEvent);
+    }
+}
+
+function onTouchEnd(event) {
+    event.preventDefault();
+    onMouseUp();
+}
+
 
 function animate() {
     requestAnimationFrame(animate);

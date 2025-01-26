@@ -14,8 +14,6 @@ let grabbedVertexIndex = -1;
 const VERTEX_MASS = 1.0;
 const SPRING_CONSTANT = 80;
 const DAMPING_CONSTANT = 2;
-const PROPAGATION_DELAY_FACTOR = 0.8;
-const WAVE_SPEED = 12.0;
 
 class VertexState {
     constructor() {
@@ -94,7 +92,9 @@ function init() {
             );
 
             material.userData.shader = shader;
-            shader.uniforms.time = { value: 0 };
+            shader.uniforms.time = {
+                value: 0
+            };
         }
     });
 
@@ -116,32 +116,29 @@ function init() {
 function initializeVertexStates(geometry) {
     vertexStates = [];
     const positionAttribute = geometry.attributes.position;
-    const vertices = positionAttribute.array;
-    
-    // Find neighbors for each vertex
-    const verticesMap = new Map();
-    for (let i = 0; i < positionAttribute.count; i++) {
-        const x = vertices[i * 3];
-        const y = vertices[i * 3 + 1];
-        const z = vertices[i * 3 + 2];
-        verticesMap.set(`${x},${y},${z}`, i);
+    const indexArray = geometry.index.array;
+
+    // Build neighbor map using triangle relationships
+    const neighborMap = new Array(positionAttribute.count).fill().map(() => new Set());
+
+    // Process each triangle to establish vertex neighbors
+    for (let i = 0; i < indexArray.length; i += 3) {
+        const a = indexArray[i];
+        const b = indexArray[i + 1];
+        const c = indexArray[i + 2];
+
+        neighborMap[a].add(b);
+        neighborMap[a].add(c);
+        neighborMap[b].add(a);
+        neighborMap[b].add(c);
+        neighborMap[c].add(a);
+        neighborMap[c].add(b);
     }
 
+    // Initialize vertex states with proper neighbors
     for (let i = 0; i < positionAttribute.count; i++) {
         const state = new VertexState();
-        const vertex = new THREE.Vector3(
-            vertices[i * 3],
-            vertices[i * 3 + 1],
-            vertices[i * 3 + 2]
-        );
-
-        // Find nearest neighbors
-        geometry.index.array.forEach((neighborIndex, idx) => {
-            if (geometry.index.array[idx + 1] === i || geometry.index.array[idx - 1] === i) {
-                state.neighbors.push(neighborIndex);
-            }
-        });
-
+        state.neighbors = Array.from(neighborMap[i]);
         vertexStates.push(state);
     }
 }
@@ -216,10 +213,10 @@ function animate() {
 
         // Spring force from original position
         const springForce = state.displacement.clone().multiplyScalar(-SPRING_CONSTANT);
-        
+
         // Damping force
         const dampingForce = state.velocity.clone().multiplyScalar(-DAMPING_CONSTANT);
-        
+
         // Neighbor forces
         let neighborForce = new THREE.Vector3();
         state.neighbors.forEach(neighborIndex => {
@@ -240,7 +237,7 @@ function animate() {
     // Update vertex positions
     const positions = sphereMesh.geometry.attributes.position.array;
     const originalPositions = originalVertices;
-    
+
     vertexStates.forEach((state, i) => {
         const index = i * 3;
         positions[index] = originalPositions[index] + state.displacement.x;

@@ -10,10 +10,11 @@ let intersectedPoint = new THREE.Vector3();
 let originalVertices = [];
 let grabbedVertexIndex = -1;
 
-// New physics parameters
+// Updated physics parameters
 const VERTEX_MASS = 1.0;
 const SPRING_CONSTANT = 80;
-const DAMPING_CONSTANT = 1.5;
+const DAMPING_CONSTANT = 5.0; // Increased damping for stability
+const NEIGHBOR_SPRING_FACTOR = 0.1; // Reduced neighbor influence
 
 class VertexState {
     constructor() {
@@ -54,7 +55,7 @@ function init() {
     scene.add(new THREE.AmbientLight(0x404040));
 
     // Sphere geometry with UV-mapped texture
-    let geometry = new THREE.BoxGeometry( 2, 2, 2, 10, 10, 10 ); // Reduced resolution for performance
+    let geometry = new THREE.BoxGeometry(2, 2, 2, 10, 10, 10); // Reduced resolution for performance
     geometry = mergeVertices(geometry); // Call mergeVertices here
     const material = new THREE.MeshPhongMaterial({
         shininess: 100,
@@ -106,7 +107,7 @@ function init() {
     originalVertices = geometry.attributes.position.array.slice();
     initializeVertexStates(geometry);
 
-    camera.position.set(3, 3, 3);  // x, y, z coordinates
+    camera.position.set(3, 3, 3); // x, y, z coordinates
     camera.lookAt(scene.position); // Ensure camera points to scene center
 
     // Event Listeners for Mouse
@@ -119,7 +120,6 @@ function init() {
     document.addEventListener('touchmove', onTouchMove);
     document.addEventListener('touchend', onTouchEnd);
 }
-
 
 function mergeVertices(geometry, tolerance = 1e-6) {
     tolerance = Math.max(tolerance, Number.EPSILON);
@@ -189,15 +189,11 @@ function mergeVertices(geometry, tolerance = 1e-6) {
         geometry.setAttribute('uv', uvAttribute);
     }
 
-
     geometry.setIndex(newIndices); // Set new index buffer
-    // geometry.index = new THREE.BufferAttribute(new Uint32Array(newIndices), 1); // Redundant line removed
-
     geometry.computeVertexNormals(); // Recompute normals based on merged vertices
     geometry.computeBoundingSphere();
     return geometry;
 }
-
 
 function initializeVertexStates(geometry) {
     vertexStates = [];
@@ -254,13 +250,14 @@ function onMouseDown(event) {
             }
         }
 
-        // Initialize wave propagation
+        // Initialize wave propagation and reset velocity
         vertexStates.forEach(state => {
             state.distanceFromSource = Infinity;
             state.lastUpdateTime = 0;
         });
         vertexStates[grabbedVertexIndex].distanceFromSource = 0;
         vertexStates[grabbedVertexIndex].lastUpdateTime = performance.now();
+        vertexStates[grabbedVertexIndex].velocity.set(0, 0, 0); // Reset velocity on grab
     }
 }
 
@@ -318,7 +315,6 @@ function onTouchEnd(event) {
     onMouseUp();
 }
 
-
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
@@ -339,7 +335,7 @@ function animate() {
         state.neighbors.forEach(neighborIndex => {
             const neighborState = vertexStates[neighborIndex];
             const displacementDiff = neighborState.displacement.clone().sub(state.displacement);
-            neighborForce.add(displacementDiff.multiplyScalar(SPRING_CONSTANT * 0.2));
+            neighborForce.add(displacementDiff.multiplyScalar(SPRING_CONSTANT * NEIGHBOR_SPRING_FACTOR));
         });
 
         // Total force
@@ -348,6 +344,7 @@ function animate() {
         // Verlet integration
         const acceleration = state.force.clone().divideScalar(VERTEX_MASS);
         state.velocity.add(acceleration.multiplyScalar(delta));
+        state.velocity.multiplyScalar(0.99); // Global velocity damping
         state.displacement.add(state.velocity.clone().multiplyScalar(delta));
     });
 

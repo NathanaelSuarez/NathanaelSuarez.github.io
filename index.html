@@ -63,12 +63,11 @@
                 // Extract image identifier from src
                 const src = event.target.src;
                 const imageName = src.substring(src.lastIndexOf('/') + 1);
-                
-                // Send custom event to Beam
-                window.beam(`/custom-events/image-click/${imageName}`);
-                
-                // Optional: prevent default action if needed
-                // event.preventDefault();
+
+                // Check if window.beam exists before calling it
+                if (typeof window.beam === 'function') {
+                  window.beam(`/custom-events/image-click/${imageName}`);
+                }
             }
         });
     </script>

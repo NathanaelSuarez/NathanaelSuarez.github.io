@@ -56,5 +56,21 @@
     </nav>
 
     <script src="main.js"></script>
+    <script>
+        // Add click tracking for images
+        document.getElementById('imageContainer').addEventListener('click', function(event) {
+            if (event.target.tagName === 'IMG') {
+                // Extract image identifier from src
+                const src = event.target.src;
+                const imageName = src.substring(src.lastIndexOf('/') + 1);
+                
+                // Send custom event to Beam
+                window.beam(`/custom-events/image-click/${imageName}`);
+                
+                // Optional: prevent default action if needed
+                // event.preventDefault();
+            }
+        });
+    </script>
 </body>
 </html>

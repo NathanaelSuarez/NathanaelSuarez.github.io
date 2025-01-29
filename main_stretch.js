@@ -13,7 +13,7 @@ let grabbedVertexIndex = -1;
 // Updated physics parameters
 const VERTEX_MASS = 1.0;
 const SPRING_CONSTANT = 80;
-const DAMPING_CONSTANT = 5.0; // Increased damping for stability
+const DAMPING_CONSTANT = 1.2; // Increased damping for stability
 const NEIGHBOR_SPRING_FACTOR = 0.1; // Reduced neighbor influence
 
 class VertexState {

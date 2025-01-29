@@ -4,7 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nathanael Suarez's Page</title>
-    
+
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-T8N6WM9T');</script>
+    <!-- End Google Tag Manager -->
+
     <!-- Google Analytics (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-40E68RDLC8"></script>
     <script>
@@ -41,8 +49,6 @@
             width: 100vw; /* Use 100% of the viewport width */
             overflow: hidden; /* Prevent scrollbars */
         }
-
-
 
         /* Wobbly font animation for the name */
         @keyframes wobble {
@@ -105,34 +111,39 @@
 </head>
 <body>
 
-<h1 class="editable" contenteditable="true">Hello World</h1>
-<p class="name">Nathanael Suarez 🥳</p>
-<p>You found my GitHub page! Welcome! 🎉</p>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8N6WM9T"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
 
-<button onclick="alert('Thanks for visiting!')">Click Me</button>
+    <h1 class="editable" contenteditable="true">Hello World</h1>
+    <p class="name">Nathanael Suarez 🥳</p>
+    <p>You found my GitHub page! Welcome! 🎉</p>
 
-<script>
-    // Function to change the background image and fade it in
-    function changeBackgroundImage() {
-        fetch('https://dog.ceo/api/breeds/image/random')  // Fetch a random dog image
-            .then(response => response.json())  // Parse the JSON response
-            .then(data => {
-                const imageURL = data.message;  // Extract the image URL from the response
-                document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
-                document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
-                setTimeout(() => {
-                    document.body.style.opacity = 1;  // Slowly fade in the background
-                }, 100);
-            })
-            .catch(error => console.error('Error fetching dog image:', error));
-    }
+    <button onclick="alert('Thanks for visiting!')">Click Me</button>
 
-    // Change background image every 5 seconds
-    setInterval(changeBackgroundImage, 5000);
+    <script>
+        // Function to change the background image and fade it in
+        function changeBackgroundImage() {
+            fetch('https://dog.ceo/api/breeds/image/random')  // Fetch a random dog image
+                .then(response => response.json())  // Parse the JSON response
+                .then(data => {
+                    const imageURL = data.message;  // Extract the image URL from the response
+                    document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
+                    document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
+                    setTimeout(() => {
+                        document.body.style.opacity = 1;  // Slowly fade in the background
+                    }, 100);
+                })
+                .catch(error => console.error('Error fetching dog image:', error));
+        }
 
-    // Initial background change on page load
-    changeBackgroundImage();
-</script>
+        // Change background image every 5 seconds
+        setInterval(changeBackgroundImage, 5000);
+
+        // Initial background change on page load
+        changeBackgroundImage();
+    </script>
 
 </body>
 </html>

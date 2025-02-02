@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Combiner</title>
+    <style>
+        /* (Keep the same CSS as before) */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .upload-section {
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #textOutput {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-section">
+        <button id="folderBtn">Upload Folder</button>
+        <button id="fileBtn">Upload Files</button>
+        <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+        <input type="file" id="fileInput" multiple class="hidden">
+    </div>
+
+    <textarea id="textOutput" readonly placeholder="Combined text will appear here..."></textarea>
+    <button id="copyBtn">Copy Text</button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Setup event listeners
+            document.getElementById('folderBtn').addEventListener('click', () => {
+                document.getElementById('folderInput').click();
+            });
+
+            document.getElementById('fileBtn').addEventListener('click', () => {
+                document.getElementById('fileInput').click();
+            });
+
+            document.getElementById('copyBtn').addEventListener('click', copyText);
+
+            // File input handlers
+            document.getElementById('folderInput').addEventListener('change', handleFileSelection);
+            document.getElementById('fileInput').addEventListener('change', handleFileSelection);
+        });
+
+        async function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            try {
+                const combinedText = await processFiles(files);
+                document.getElementById('textOutput').value = combinedText;
+            } catch (error) {
+                alert(`Error processing files: ${error.message}`);
+            }
+        }
+
+        async function processFiles(files) {
+            const separator = '\n'.repeat(10);
+            const contents = await Promise.all(
+                files.map(async (file) => {
+                    const content = await readFileContent(file);
+                    return `=== ${file.name} ===\n\n${content}`;
+                })
+            );
+            return contents.join(separator);
+        }
+
+        function readFileContent(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error(`Could not read file: ${file.name}`));
+                reader.readAsText(file);
+            });
+        }
+
+        async function copyText() {
+            const textarea = document.getElementById('textOutput');
+            try {
+                await navigator.clipboard.writeText(textarea.value);
+                alert('Text copied to clipboard!');
+            } catch (err) {
+                alert('Failed to copy text. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>

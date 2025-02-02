@@ -1,76 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CLIP Image Recommender</title>
     <link rel="stylesheet" href="styles.css">
+
     <!-- Beam Analytics -->
-    <script src="https://beamanalytics.b-cdn.net/beam.min.js" data-token="5a624ed3-bd18-4e80-98e6-a401d4373524" async></script>
-  </head>
-  <body>
+    <script
+      src="https://beamanalytics.b-cdn.net/beam.min.js"
+      data-token="5a624ed3-bd18-4e80-98e6-a401d4373524"
+      async
+    >
+    </script>
+</head>
+<body>
     <div class="controls">
-      <div class="control-group">
-        <label>Training Interval</label>
-        <div class="slider-container">
-          <input type="range" id="trainingInterval" min="1" max="10" value="5">
-          <span id="trainingValue">5</span>
+        <div class="control-group">
+            <label>Training Interval</label>
+            <div class="slider-container">
+                <input type="range" id="trainingInterval" min="1" max="10" value="5">
+                <span id="trainingValue">5</span>
+            </div>
         </div>
-      </div>
-      <div class="control-group">
-        <label>Exploration Pool</label>
-        <div class="slider-container">
-          <input type="range" id="poolSize" min="4" max="100" value="50">
-          <span id="poolValue">50</span>
+        <div class="control-group">
+            <label>Exploration Pool</label>
+            <div class="slider-container">
+                <input type="range" id="poolSize" min="4" max="100" value="50">
+                <span id="poolValue">50</span>
+            </div>
         </div>
-      </div>
     </div>
+
     <div class="status-bar">
-      <div class="progress-container">
-        <div class="progress">
-          <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+        <div class="progress-container">
+            <div class="progress">
+                <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <div class="counter" id="counter">0/5</div>
         </div>
-        <div class="counter" id="counter">0/5</div>
-      </div>
-      <div class="action-buttons">
-        <button class="skip-btn" id="skipBtn">Skip</button>
-        <button class="clear-btn" id="clearBtn">Clear</button>
-      </div>
-      <div id="modelStatus" class="model-status">Initializing...</div>
+        <div class="action-buttons">
+            <button class="skip-btn" id="skipBtn">Skip</button>
+            <button class="clear-btn" id="clearBtn">Clear</button>
+        </div>
+        <div id="modelStatus" class="model-status">Initializing...</div>
     </div>
+
     <div class="image-grid" id="imageContainer"></div>
+
     <!-- Navigation Bar -->
     <nav class="nav-bar">
-      <a href="nathanael">
-        <button>Nathanael</button>
-      </a>
-      <a href="piano">
-        <button>Piano</button>
-      </a>
-      <a href="stretch">
-        <button>Stretch</button>
-      </a>
-      <a href="textor">
-        <button>Textor</button>
-      </a>
-      <a href="imgeditor">
-        <button>ImgEditor</button>
-      </a>
+      <a href="nathanael"><button>Nathanael</button></a>
+      <a href="piano"><button>Piano</button></a>
+      <a href="stretch"><button>Stretch</button></a>
+      <a href="textor"><button>Textor</button></a>
+      <a href="imgeditor"><button>ImgEditor</button></a>
     </nav>
+
     <script src="main.js"></script>
     <script>
-      // Add click tracking for images
-      document.getElementById('imageContainer').addEventListener('click', function(event) {
-        if (event.target.tagName === 'IMG') {
-          // Extract image identifier from src
-          const src = event.target.src;
-          const imageName = src.substring(src.lastIndexOf('/') + 1);
-          // Check if window.beam exists before calling it
-          if (typeof window.beam === 'function') {
-            window.beam(`/custom-events/image-click/${imageName}`);
-          }
-        }
-      });
+        // Add click tracking for images
+        document.getElementById('imageContainer').addEventListener('click', function(event) {
+            if (event.target.tagName === 'IMG') {
+                // Extract image identifier from src
+                const src = event.target.src;
+                const imageName = src.substring(src.lastIndexOf('/') + 1);
+
+                // Check if window.beam exists before calling it
+                if (typeof window.beam === 'function') {
+                  window.beam(`/custom-events/image-click/${imageName}`);
+                }
+            }
+        });
     </script>
-  </body>
+</body>
 </html>

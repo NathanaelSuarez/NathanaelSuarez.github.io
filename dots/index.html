@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Elastic Dots</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+
+        /* Switch Style */
+        .toggle-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.5);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-family: sans-serif;
+            font-size: 14px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 30px;
+            height: 17px;
+            margin-left: 5px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 17px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 13px;
+            width: 13px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #2196F3;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(13px);
+        }
+
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <!-- Friction Toggle -->
+    <div class="toggle-container">
+        <label for="frictionToggle">Friction:</label>
+        <label class="switch">
+            <input type="checkbox" id="frictionToggle">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const DOTS_COUNT = 200;
+        const DOT_RADIUS = 5;
+        const ACTIVATION_SPEED = 3;
+        const MOUSE_FORCE_RADIUS = 50;
+        const MOUSE_FORCE_STRENGTH = 0.5;
+        const CLICK_FORCE_RADIUS_MULTIPLIER = 4;
+        const CLICK_FORCE_STRENGTH_MULTIPLIER = 8;
+        const CLICK_DURATION = 500;
+        const CLICK_FORCE_RADIUS = MOUSE_FORCE_RADIUS * CLICK_FORCE_RADIUS_MULTIPLIER;
+        const CLICK_FORCE_STRENGTH = MOUSE_FORCE_STRENGTH * CLICK_FORCE_STRENGTH_MULTIPLIER;
+        const FRICTION_FACTOR = 0.95; // Adjust for more or less friction
+
+        // Canvas setup
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        class Dot {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = DOT_RADIUS;
+                this.isMoving = false;
+                this.color = this.getRandomColor();
+            }
+
+            getRandomColor() {
+                const r = Math.floor(Math.random() * 256);
+                const g = Math.floor(Math.random() * 256);
+                const b = Math.floor(Math.random() * 256);
+                return `rgb(${r},${g},${b})`;
+            }
+
+            update() {
+                if (!this.isMoving) return;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall collisions - more elastic by reducing velocity loss
+                const dampingFactor = 0.98;
+                if (this.x < this.radius) {
+                    this.x = this.radius;
+                    this.vx *= -dampingFactor;
+                }
+                if (this.x > canvas.width - this.radius) {
+                    this.x = canvas.width - this.radius;
+                    this.vx *= -dampingFactor;
+                }
+                if (this.y < this.radius) {
+                    this.y = this.radius;
+                    this.vy *= -dampingFactor;
+                }
+                if (this.y > canvas.height - this.radius) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -dampingFactor;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+
+        // Create dots grid
+        const dots = [];
+        const cols = Math.floor(Math.sqrt(DOTS_COUNT));
+        const rows = cols;
+        const spacingX = canvas.width / (cols + 1);
+        const spacingY = canvas.height / (rows + 1);
+
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                dots.push(new Dot(
+                    (j + 1) * spacingX,
+                    (i + 1) * spacingY
+                ));
+            }
+        }
+
+        // Mouse interaction
+        let mouseX = 0, mouseY = 0;
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Click interaction
+        let isClicking = false;
+        let clickMouseX = 0;
+        let clickMouseY = 0;
+        let clickEndTime = 0;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isClicking = true;
+            clickMouseX = e.clientX;
+            clickMouseY = e.clientY;
+            clickEndTime = performance.now() + CLICK_DURATION;
+        });
+
+        // Friction Toggle Logic
+        const frictionToggle = document.getElementById('frictionToggle');
+        let isFrictionEnabled = false; // Initially disabled
+
+        frictionToggle.addEventListener('change', () => {
+            isFrictionEnabled = frictionToggle.checked;
+        });
+
+
+        // Animation loop
+        function animate() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Apply global friction if toggle is enabled
+            if (isFrictionEnabled) {
+                dots.forEach(dot => {
+                    if (dot.isMoving) {
+                        dot.vx *= FRICTION_FACTOR;
+                        dot.vy *= FRICTION_FACTOR;
+                    }
+                });
+            }
+
+
+            // Activate dots on mouse over and apply force field
+            dots.forEach(dot => {
+                const dxMouse = mouseX - dot.x;
+                const dyMouse = mouseY - dot.y;
+                const distMouseSq = dxMouse * dxMouse + dyMouse * dyMouse;
+
+                // Initial activation if mouse enters dot for the first time
+                if (!dot.isMoving && distMouseSq < dot.radius * dot.radius) {
+                    const angle = Math.random() * Math.PI * 2;
+                    dot.vx = Math.cos(angle) * ACTIVATION_SPEED;
+                    dot.vy = Math.sin(angle) * ACTIVATION_SPEED;
+                    dot.isMoving = true;
+                }
+
+                // Mouse force field effect - REPEL DOTS
+                if (distMouseSq < MOUSE_FORCE_RADIUS * MOUSE_FORCE_RADIUS) {
+                    const distMouse = Math.sqrt(distMouseSq);
+                    const forceFactor = (MOUSE_FORCE_RADIUS - distMouse) / MOUSE_FORCE_RADIUS;
+                    const nxMouse = dxMouse / distMouse;
+                    const nyMouse = dyMouse / distMouse;
+
+                    dot.vx -= nxMouse * MOUSE_FORCE_STRENGTH * forceFactor;
+                    dot.vy -= nyMouse * MOUSE_FORCE_STRENGTH * forceFactor;
+                    dot.isMoving = true;
+                }
+
+                // Click force field effect - TEMPORARY STRONG PUSH
+                if (isClicking && performance.now() < clickEndTime) {
+                    const dxClick = clickMouseX - dot.x;
+                    const dyClick = clickMouseY - dot.y;
+                    const distClickSq = dxClick * dxClick + dyClick * dyClick;
+
+                    if (distClickSq < CLICK_FORCE_RADIUS * CLICK_FORCE_RADIUS) {
+                        const distClick = Math.sqrt(distClickSq);
+                        const forceFactorClick = (CLICK_FORCE_RADIUS - distClick) / CLICK_FORCE_RADIUS;
+                        const nxClick = dxClick / distClick;
+                        const nyClick = dyClick / distClick;
+
+                        dot.vx -= nxClick * CLICK_FORCE_STRENGTH * forceFactorClick;
+                        dot.vy -= nyClick * CLICK_FORCE_STRENGTH * forceFactorClick;
+                        dot.isMoving = true;
+                    }
+                }
+            });
+
+            // Reset click state after duration
+            if (isClicking && performance.now() >= clickEndTime) {
+                isClicking = false;
+            }
+
+
+            // Update dots
+            dots.forEach(dot => dot.update());
+
+            // Collision detection and response
+            for (let i = 0; i < dots.length; i++) {
+                for (let j = i + 1; j < dots.length; j++) {
+                    const d1 = dots[i];
+                    const d2 = dots[j];
+
+                    const dx = d2.x - d1.x;
+                    const dy = d2.y - d1.y;
+                    const sqDist = dx * dx + dy * dy;
+                    const minDist = d1.radius + d2.radius;
+
+                    if (sqDist < minDist * minDist) {
+                        const dist = Math.sqrt(sqDist);
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+
+                        // Calculate relative velocity
+                        const rvx = d1.vx - d2.vx;
+                        const rvy = d1.vy - d2.vy;
+                        const dotProd = rvx * nx + rvy * ny;
+
+                        if (dotProd > 0) {
+                            // Elastic collision
+                            const impulse = dotProd;
+                            d1.vx -= impulse * nx;
+                            d1.vy -= impulse * ny;
+                            d2.vx += impulse * nx;
+                            d2.vy += impulse * ny;
+
+                            // Separate dots - prevent sticking
+                            const overlap = (minDist - dist) / 2;
+                            d1.x -= overlap * nx;
+                            d1.y -= overlap * ny;
+                            d2.x += overlap * nx;
+                            d2.y += overlap * ny;
+
+                            // Ensure both dots are moving after collision
+                            d1.isMoving = true;
+                            d2.isMoving = true;
+                        }
+                    }
+                }
+            }
+
+            // Draw dots
+            dots.forEach(dot => dot.draw());
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

@@ -46,9 +46,11 @@
         <div id="modelStatus" class="model-status">Initializing...</div>
     </div>
 
-    <div class="usage-instructions">
+    <div class="instruction-text">
         <p>
-            Click on the image you like most from each set. The recommender learns from your choices and will adapt to your preferences over time. Skip if you don't like any image.
+            Welcome to the Image Recommender! To use this page, simply click on the image you like best from each set of four.
+            The recommender learns from your choices and will adapt to your preferences over time.
+            Use the sliders to adjust the training interval (how often the model learns) and the exploration pool size (the variety of images it considers).
         </p>
     </div>
 
@@ -56,12 +58,12 @@
 
     <!-- Navigation Bar -->
     <nav class="nav-bar">
-      <a href="nathanael"><button>Nathanael</button></a>
-      <a href="piano"><button>Piano</button></a>
-      <a href="stretch"><button>Stretch</button></a>
-      <a href="textor"><button>Textor</button></a>
-      <a href="imgeditor"><button>ImgEditor</button></a>
-      <a href="ocr"><button>OCR</button></a>
+        <button onclick="window.location.href='nathanael'">Nathanael</button>
+        <button onclick="window.location.href='piano'">Piano</button>
+        <button onclick="window.location.href='stretch'">Stretch</button>
+        <button onclick="window.location.href='textor'">Textor</button>
+        <button onclick="window.location.href='imgeditor'">ImgEditor</button>
+        <button onclick="window.location.href='ocr'">OCR</button>
     </nav>
 
     <script src="main.js"></script>

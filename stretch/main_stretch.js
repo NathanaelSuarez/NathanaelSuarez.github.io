@@ -13,8 +13,12 @@ let grabbedVertexIndex = -1;
 // Updated physics parameters
 const VERTEX_MASS = 1.0;
 const SPRING_CONSTANT = 80;
-const DAMPING_CONSTANT = 1.2; // Increased damping for stability
-const NEIGHBOR_SPRING_FACTOR = 0.1; // Reduced neighbor influence
+const DAMPING_CONSTANT = 1.6; // Increased damping for stability
+const NEIGHBOR_SPRING_FACTOR = 0.3; // Reduced neighbor influence
+
+// Fixed timestep variables
+let timeAccumulator = 0;
+const FIXED_TIMESTEP = 1 / 60; // 60 physics updates per second
 
 class VertexState {
     constructor() {
@@ -55,7 +59,7 @@ function init() {
     scene.add(new THREE.AmbientLight(0x404040));
 
     // Sphere geometry with UV-mapped texture
-    let geometry = new THREE.BoxGeometry(2, 2, 2, 10, 10, 10); // Reduced resolution for performance
+    let geometry = new THREE.BoxGeometry(2, 2, 2, 15, 15, 15); // Reduced resolution for performance
     geometry = mergeVertices(geometry); // Call mergeVertices here
     const material = new THREE.MeshPhongMaterial({
         shininess: 100,
@@ -318,8 +322,23 @@ function onTouchEnd(event) {
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-    const currentTime = performance.now();
+    timeAccumulator += delta;
 
+    // Physics updates with fixed timestep
+    while (timeAccumulator >= FIXED_TIMESTEP) {
+        updatePhysics(FIXED_TIMESTEP);
+        timeAccumulator -= FIXED_TIMESTEP;
+    }
+
+    // Update shader time uniform
+    if (sphereMesh.material.userData.shader) {
+        sphereMesh.material.userData.shader.uniforms.time.value = performance.now() / 1000;
+    }
+
+    renderer.render(scene, camera);
+}
+
+function updatePhysics(delta) {
     // Physics simulation
     vertexStates.forEach((state, i) => {
         if (i === grabbedVertexIndex && mouseDown) return;
@@ -344,7 +363,6 @@ function animate() {
         // Verlet integration
         const acceleration = state.force.clone().divideScalar(VERTEX_MASS);
         state.velocity.add(acceleration.multiplyScalar(delta));
-        state.velocity.multiplyScalar(0.99); // Global velocity damping
         state.displacement.add(state.velocity.clone().multiplyScalar(delta));
     });
 
@@ -361,13 +379,6 @@ function animate() {
 
     sphereMesh.geometry.attributes.position.needsUpdate = true;
     sphereMesh.geometry.computeVertexNormals();
-
-    // Update shader time uniform
-    if (sphereMesh.material.userData.shader) {
-        sphereMesh.material.userData.shader.uniforms.time.value = performance.now() / 1000;
-    }
-
-    renderer.render(scene, camera);
 }
 
 window.addEventListener('resize', () => {

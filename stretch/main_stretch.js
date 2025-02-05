@@ -38,6 +38,9 @@ document.body.style.background = "linear-gradient(135deg, #FFB6C1 0%, #87CEEB 50
 document.body.style.margin = "0";
 document.body.style.overflow = "hidden";
 
+// Get the instruction text element
+const instructionText = document.getElementById('instruction-text');
+
 init();
 animate();
 
@@ -123,7 +126,18 @@ function init() {
     document.addEventListener('touchstart', onTouchStart);
     document.addEventListener('touchmove', onTouchMove);
     document.addEventListener('touchend', onTouchEnd);
+
+    // Event listener to hide instruction text on first interaction
+    document.addEventListener('mousedown', hideInstructions);
+    document.addEventListener('touchstart', hideInstructions);
 }
+
+function hideInstructions() {
+    instructionText.classList.add('hidden');
+    document.removeEventListener('mousedown', hideInstructions);
+    document.removeEventListener('touchstart', hideInstructions);
+}
+
 
 function mergeVertices(geometry, tolerance = 1e-6) {
     tolerance = Math.max(tolerance, Number.EPSILON);

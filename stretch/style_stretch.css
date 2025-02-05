@@ -3,3 +3,25 @@ body {
     touch-action: none;
     user-select: none;
 }
+
+#instruction-text {
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2em;
+    color: black; /* Or any color you prefer */
+    text-align: center;
+    pointer-events: none; /* Make it non-interactive */
+    opacity: 1;
+    transition: opacity 0.5s ease-out; /* Fade out transition */
+    font-family: sans-serif; /* Choose a font */
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.7); /* Optional background to make text more readable */
+    padding: 10px 20px;
+    border-radius: 5px;
+}
+
+#instruction-text.hidden {
+    opacity: 0;
+}

@@ -15,43 +15,45 @@
     </script>
 </head>
 <body>
-    <div class="controls">
-        <div class="control-group">
-            <label>Training Interval</label>
-            <div class="slider-container">
-                <input type="range" id="trainingInterval" min="1" max="10" value="5">
-                <span id="trainingValue">5</span>
+    <div class="header-container">
+        <div class="status-bar">
+            <div class="progress-container">
+                <div class="progress">
+                    <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="counter" id="counter">0/5</div>
             </div>
-        </div>
-        <div class="control-group">
-            <label>Exploration Pool</label>
-            <div class="slider-container">
-                <input type="range" id="poolSize" min="4" max="100" value="50">
-                <span id="poolValue">50</span>
+            <div class="action-buttons">
+                <button class="skip-btn" id="skipBtn">Skip</button>
+                <button class="clear-btn" id="clearBtn">Clear</button>
             </div>
+            <div id="modelStatus" class="model-status">Initializing...</div>
         </div>
-    </div>
 
-    <div class="status-bar">
-        <div class="progress-container">
-            <div class="progress">
-                <div id="progressBar" class="progress-fill" style="width: 0%"></div>
-            </div>
-            <div class="counter" id="counter">0/5</div>
+        <div class="instruction-text">
+            <p>
+                Welcome to the Image Recommender! To use this page, simply click on the image you like best from each set of four.
+                The recommender learns from your choices and will adapt to your preferences over time.
+                Use the sliders to adjust the training interval (how often the model learns) and the exploration pool size (the variety of images it considers).
+            </p>
         </div>
-        <div class="action-buttons">
-            <button class="skip-btn" id="skipBtn">Skip</button>
-            <button class="clear-btn" id="clearBtn">Clear</button>
-        </div>
-        <div id="modelStatus" class="model-status">Initializing...</div>
-    </div>
 
-    <div class="instruction-text">
-        <p>
-            Welcome to the Image Recommender! To use this page, simply click on the image you like best from each set of four.
-            The recommender learns from your choices and will adapt to your preferences over time.
-            Use the sliders to adjust the training interval (how often the model learns) and the exploration pool size (the variety of images it considers).
-        </p>
+        <div class="controls">
+            <div class="control-group">
+                <label>Training Interval</label>
+                <div class="slider-container">
+                    <input type="range" id="trainingInterval" min="1" max="10" value="5">
+                    <span id="trainingValue">5</span>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Exploration Pool</label>
+                <div class="slider-container">
+                    <input type="range" id="poolSize" min="4" max="100" value="50">
+                    <span id="poolValue">50</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="image-grid" id="imageContainer"></div>

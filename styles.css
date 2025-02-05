@@ -11,25 +11,64 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     margin: 0;
     padding: 20px;
-    padding-top: 200px; /* Increased padding-top to accommodate fixed elements */
     background-color: var(--background-color);
     display: flex;
     flex-direction: column;
     align-items: center;
-    box-sizing: border-box; /* Ensure padding is included in body's total width */
 }
 
-.controls {
-    position: fixed;
-    top: 10px;
-    right: 10px;
+/* Header Container to hold status, text, and controls */
+.header-container {
+    display: grid;
+    grid-template-columns: auto 1fr auto; /* Status, Text, Controls columns */
+    grid-template-rows: auto;
+    gap: 20px; /* Gap between grid items */
+    width: 100%; /* Take full width of body */
+    max-width: 1200px; /* Match max-width of image grid if needed */
+    margin-bottom: 20px; /* Space below header container */
+    align-items: start; /* Align items to the start of the grid row */
+}
+
+/* Status Bar - positioned in the first column */
+.status-bar {
+    grid-column: 1;
     background: rgba(255, 255, 255, 0.95);
     padding: 15px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     backdrop-filter: blur(5px);
-    z-index: 1000;
-    width: 300px;
+    z-index: 1000; /* Ensure it's above other content if needed */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: fit-content; /* Adjust width to content */
 }
+
+/* Instruction Text - positioned in the second column, taking available space */
+.instruction-text {
+    grid-column: 2;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.instruction-text p {
+    color: #555;
+    line-height: 1.6;
+}
+
+/* Controls - positioned in the third column */
+.controls {
+    grid-column: 3;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    backdrop-filter: blur(5px);
+    z-index: 1000; /* Ensure it's above other content if needed */
+    width: 300px; /* Fixed width for controls */
+}
+
 
 .control-group {
     margin-bottom: 15px;
@@ -59,21 +98,6 @@ input[type="range"] {
     accent-color: var(--primary-color);
 }
 
-.instruction-text {
-    max-width: 800px;
-    margin-bottom: 20px;
-    padding: 15px;
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    text-align: center;
-}
-
-.instruction-text p {
-    color: #555;
-    line-height: 1.6;
-}
-
 
 .image-grid {
     display: grid;
@@ -81,7 +105,7 @@ input[type="range"] {
     gap: 15px;
     max-width: 1200px;
     width: 100%;
-    /* margin-top: 20px;  Removed manual margin-top - body padding handles spacing */
+    margin-top: 20px;
 }
 
 .image-item {
@@ -105,19 +129,6 @@ input[type="range"] {
     box-shadow: 0 6px 12px rgba(0,0,0,0.15);
 }
 
-.status-bar {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    background: rgba(255, 255, 255, 0.95);
-    padding: 15px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    backdrop-filter: blur(5px);
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
 
 .progress-container {
     display: flex;
@@ -209,5 +220,24 @@ button:hover {
 
     .nav-bar {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+}
+
+/* Media query for smaller screens to stack header elements vertically */
+@media (max-width: 767px) {
+    .header-container {
+        grid-template-columns: 1fr; /* Single column layout */
+        grid-template-rows: auto auto auto; /* Stack status, text, controls */
+        gap: 15px; /* Reduced gap for vertical stacking */
+    }
+
+    .status-bar, .instruction-text, .controls {
+        grid-column: 1; /* All occupy the single column */
+        width: 100%; /* Full width on smaller screens */
+        box-sizing: border-box; /* Include padding in width */
+    }
+
+    .controls {
+        width: 100%; /* Ensure controls take full width when stacked */
     }
 }

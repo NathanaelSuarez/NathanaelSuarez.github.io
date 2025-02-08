@@ -13,6 +13,33 @@
       async
     >
     </script>
+    <style>
+        .shiny-button {
+            background: linear-gradient(to bottom, #66b3ff 5%, #0080ff 100%);
+            background-color: #66b3ff;
+            border-radius: 8px;
+            border: 1px solid #004d99;
+            display: inline-block;
+            cursor: pointer;
+            color: #ffffff;
+            font-family: Arial;
+            font-size: 17px;
+            font-weight: bold;
+            padding: 10px 20px;
+            text-decoration: none;
+            text-shadow: 0px 1px 0px #0073e6;
+        }
+
+        .shiny-button:hover {
+            background: linear-gradient(to bottom, #0080ff 5%, #66b3ff 100%);
+            background-color: #0080ff;
+        }
+
+        .shiny-button:active {
+            position: relative;
+            top: 1px;
+        }
+    </style>
 </head>
 <body>
     <div class="header-container">
@@ -64,6 +91,7 @@
         <button onclick="window.location.href='stretch'">Squishy Cube</button>
         <button onclick="window.location.href='dots'">Particle Simulator</button>
         <button onclick="window.location.href='ocr'">OCR</button>
+        <button onclick="window.location.href='invisible'" class="shiny-button">Invisible</button>
     </nav>
 
     <script src="main.js"></script>

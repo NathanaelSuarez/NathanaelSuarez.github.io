@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Open Food Facts Search</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #searchContainer { margin-bottom: 20px; }
+        #searchResults {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-gap: 10px;
+        }
+        .searchResultItem {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            cursor: pointer;
+            border: 1px solid #eee;
+            border-radius: 5px;
+        }
+        .searchResultItem:hover { background-color: #f0f0f0; }
+        .searchResultItem img {
+            width: 150px;
+            height: 150px;
+            margin-bottom: 5px;
+            object-fit: contain;
+        }
+        .searchResultText { text-align: center; margin-bottom: 5px; }
+        .searchResultText a { text-decoration: none; color: inherit; } /* Link styling */
+        .searchResultMacronutrients { font-size: 0.9em; color: #777; text-align: center; }
+
+        #selectedProducts {
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: grid; /* Enable CSS Grid for selected products */
+            grid-template-columns: repeat(2, 1fr); /* 2 columns for selected products */
+            grid-gap: 5px; /* Reduced grid gap for selected products */
+        }
+        .selectedProductItem {
+            border: 1px solid #eee; /* Added border for selected items */
+            border-radius: 5px;
+            padding: 5px; /* Reduced padding for selected items */
+            margin-bottom: 0; /* Remove default margin-bottom */
+        }
+        .selectedProductItem:last-child { border-bottom: none; } /* No border-bottom needed anymore */
+        .macronutrients { margin-top: 5px; font-size: 0.9em; color: #555; }
+
+        #optimizerControls { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; }
+        #optimizerControls label { display: block; margin-bottom: 5px; }
+        #optimizerResults { margin-top: 20px; border: 1px solid #ccc; padding: 10px; }
+        .optimizedServing { margin-bottom: 10px; }
+
+        #loadingIndicator { display: none; margin-bottom: 10px; } /* Initially hidden */
+    </style>
+</head>
+<body>
+    <h1>Open Food Facts Search</h1>
+
+    <div id="searchContainer">
+        <input type="text" id="searchTerm" placeholder="Enter search term (e.g., smuckers)">
+        <button onclick="searchProducts()">Search</button>
+        <div id="loadingIndicator">Searching...</div>  <!-- Loading indicator -->
+    </div>
+
+    <h2>Search Results</h2>
+    <div id="searchResults">
+        <p>Enter a search term and click 'Search' to see results.</p>
+    </div>
+
+    <h2>Selected Products and Macronutrients</h2>
+    <div id="selectedProducts">
+        <p>No products selected yet.</p>
+    </div>
+
+    <div id="optimizerControls">
+        <h2>Optimizer Controls</h2>
+        <label for="idealKcal">Ideal Calories (kcal):</label>
+        <input type="number" id="idealKcal" value="2000"><br>
+        <label for="idealCarbs">Ideal Carbs (g):</label>
+        <input type="number" id="idealCarbs" value="250"><br>
+        <label for="idealFat">Ideal Fat (g):</label>
+        <input type="number" id="idealFat" value="70"><br>
+        <label for="idealProtein">Ideal Protein (g):</label>
+        <input type="number" id="idealProtein" value="100"><br>
+        <button onclick="optimizeServingSizes()">Optimize Serving Sizes</button>
+    </div>
+
+    <div id="optimizerResults">
+        <h2>Optimizer Results</h2>
+        <div id="optimizedServingsDisplay">
+            <p>Click "Optimize Serving Sizes" to see results.</p>
+        </div>
+    </div>
+
+
+    <script>
+        let selectedProductList = [];
+        let currentSearchResults = [];
+
+        function searchProducts() {
+            const searchTerm = document.getElementById('searchTerm').value;
+            if (!searchTerm) {
+                document.getElementById('searchResults').innerHTML = '<p>Please enter a search term.</p>';
+                return;
+            }
+
+            const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${searchTerm}&search_simple=1&action=process&json=1`;
+
+            document.getElementById('loadingIndicator').style.display = 'block'; // Show loading indicator
+
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    currentSearchResults = data.products;
+                    displaySearchResults(data.products);
+                    document.getElementById('loadingIndicator').style.display = 'none'; // Hide loading indicator on success
+                })
+                .catch(error => {
+                    document.getElementById('searchResults').innerHTML = '<p>Error fetching data. Please try again later.</p>';
+                    console.error('Fetch error:', error);
+                    document.getElementById('loadingIndicator').style.display = 'none'; // Hide loading indicator on error
+                });
+        }
+
+        function displaySearchResults(products) {
+            const searchResultsDiv = document.getElementById('searchResults');
+            searchResultsDiv.innerHTML = '';
+
+            if (products && products.length > 0) {
+                products.forEach(product => {
+                    const resultItem = document.createElement('div');
+                    resultItem.classList.add('searchResultItem');
+
+                    // Product Image
+                    const img = document.createElement('img');
+                    img.src = product.image_front_thumb_url || product.image_front_small_url || '';
+                    img.alt = product.product_name_en || product.product_name || 'Product Image';
+                    resultItem.appendChild(img);
+
+                    // Product Text (with Link)
+                    const textDiv = document.createElement('div');
+                    textDiv.classList.add('searchResultText');
+                    const productLink = document.createElement('a'); // Create link
+                    productLink.href = product.url; // Set URL
+                    productLink.textContent = product.product_name_en || product.product_name || 'Product Name Unavailable'; // Set link text
+                    textDiv.appendChild(productLink); // Append link to text div
+                    resultItem.appendChild(textDiv);
+
+                    // Macronutrients in Search Results
+                    const macronutrientsDiv = document.createElement('div');
+                    macronutrientsDiv.classList.add('searchResultMacronutrients');
+                    if (product.nutriments) {
+                        let energyKcal = product.nutriments['energy-kcal_100g'] || product.nutriments['energy_100g'] ;
+                        if (!energyKcal && product.nutriments['energy_100g']) {
+                            energyKcal = product.nutriments['energy_100g'] / 4.184;
+                        }
+                        macronutrientsDiv.innerHTML = `
+                            Energy: ${energyKcal ? parseFloat(energyKcal).toFixed(1) + ' kcal' : 'N/A'},
+                            Carbs: ${product.nutriments.carbohydrates_100g ? parseFloat(product.nutriments.carbohydrates_100g).toFixed(1) + 'g' : 'N/A'},
+                            Fat: ${product.nutriments.fat_100g ? parseFloat(product.nutriments.fat_100g).toFixed(1) + 'g' : 'N/A'},
+                            Protein: ${product.nutriments.proteins_100g ? parseFloat(product.nutriments.proteins_100g).toFixed(1) + 'g' : 'N/A'}
+                        `;
+                    } else {
+                        macronutrientsDiv.textContent = 'Macronutrients N/A';
+                    }
+                    resultItem.appendChild(macronutrientsDiv);
+
+                    resultItem.onclick = () => addProductToSelected(product._id);
+                    searchResultsDiv.appendChild(resultItem);
+                });
+            } else {
+                searchResultsDiv.innerHTML = '<p>No products found for this search term.</p>';
+            }
+        }
+
+        function addProductToSelected(productId) {
+            const productToAdd = currentSearchResults.find(product => product._id === productId);
+            if (productToAdd) {
+                selectedProductList.push(productToAdd);
+                displaySelectedProducts();
+            } else {
+                console.error('Product ID not found in current search results:', productId);
+                alert('Could not add product. Please search again and select.');
+            }
+        }
+
+        function displaySelectedProducts() {
+            const selectedProductsDiv = document.getElementById('selectedProducts');
+            selectedProductsDiv.innerHTML = '';
+
+            if (selectedProductList.length > 0) {
+                selectedProductList.forEach(product => {
+                    const productDiv = document.createElement('div');
+                    productDiv.classList.add('selectedProductItem');
+                    productDiv.innerHTML = `<h3>${product.product_name_en || product.product_name || 'Product Name Unavailable'}</h3>`;
+
+                    const macronutrientsDiv = document.createElement('div');
+                    macronutrientsDiv.classList.add('macronutrients');
+
+                    if (product.nutriments) {
+                        let energyKcal = product.nutriments['energy-kcal_100g'] || product.nutriments['energy_100g'] ;
+                        if (!energyKcal && product.nutriments['energy_100g']) {
+                            energyKcal = product.nutriments['energy_100g'] / 4.184;
+                        }
+
+                        macronutrientsDiv.innerHTML = `
+                            Energy: ${energyKcal ? parseFloat(energyKcal).toFixed(1) + ' kcal' : 'N/A'},
+                            Carbs: ${product.nutriments.carbohydrates_100g ? parseFloat(product.nutriments.carbohydrates_100g).toFixed(1) + 'g' : 'N/A'},
+                            Fat: ${product.nutriments.fat_100g ? parseFloat(product.nutriments.fat_100g).toFixed(1) + 'g' : 'N/A'},
+                            Protein: ${product.nutriments.proteins_100g ? parseFloat(product.nutriments.proteins_100g).toFixed(1) + 'g' : 'N/A'}
+                        `;
+                    } else {
+                        macronutrientsDiv.textContent = 'Macronutrient data unavailable.';
+                    }
+                    productDiv.appendChild(macronutrientsDiv);
+                    selectedProductsDiv.appendChild(productDiv);
+                });
+            } else {
+                selectedProductsDiv.innerHTML = '<p>No products selected yet.</p>';
+            }
+        }
+
+        function optimizeServingSizes() {
+            const idealKcal = parseFloat(document.getElementById('idealKcal').value);
+            const idealCarbs = parseFloat(document.getElementById('idealCarbs').value);
+            const idealFat = parseFloat(document.getElementById('idealFat').value);
+            const idealProtein = parseFloat(document.getElementById('idealProtein').value);
+
+            if (selectedProductList.length === 0) {
+                alert("Please select products to optimize.");
+                return;
+            }
+
+            const idealValues = { kcal: idealKcal, carbs: idealCarbs, fat: idealFat, protein: idealProtein };
+            const optimizationResult = geneticAlgorithmOptimizer(selectedProductList, idealValues);
+            displayOptimizationResults(optimizationResult);
+        }
+
+        function geneticAlgorithmOptimizer(products, idealValues, populationSize = 100, numGenerations = 200, mutationRate = 0.1, crossoverRate = 0.8) {
+            const numProducts = products.length;
+
+            function calculateMacronutrientsForSolution(solution) {
+                let totalKcal = 0;
+                let totalCarbs = 0;
+                let totalFat = 0;
+                let totalProtein = 0;
+
+                for (let i = 0; i < numProducts; i++) {
+                    const product = products[i];
+                    const servingSizeMultiplier = solution[i];
+                    let productServingSize = product.serving_size;
+                    let baseServingWeight = 100; // Default to 100g if serving size is not available or parsing fails
+
+                    if (productServingSize) {
+                        const parsedServingSize = parseFloat(productServingSize.replace(/[^\d.]/g, '')); // Extract number, remove non-numeric chars
+                        if (!isNaN(parsedServingSize)) {
+                            baseServingWeight = parsedServingSize; // Use parsed serving size weight
+                            const unit = productServingSize.replace(/[\d.\s]/g, '').toLowerCase().trim(); // Extract unit
+                            if (unit === 'ml') {
+                                baseServingWeight = baseServingWeight; // Assuming 1ml ~= 1g for simplicity for liquids, adjust if needed based on food type.
+                            } // If unit is 'g' or no unit detected, we use grams directly
+                        }
+                    }
+
+
+                    if (product.nutriments) {
+                        let kcalPer100g = product.nutriments['energy-kcal_100g'] || (product.nutriments['energy_100g'] / 4.184) || 0;
+                        let carbsPer100g = product.nutriments.carbohydrates_100g || 0;
+                        let fatPer100g = product.nutriments.fat_100g || 0;
+                        let proteinPer100g = product.nutriments.proteins_100g || 0;
+
+                        // Calculate nutrients per base serving size (product's serving size or 100g)
+                        const kcalPerServing = (kcalPer100g / 100) * baseServingWeight;
+                        const carbsPerServing = (carbsPer100g / 100) * baseServingWeight;
+                        const fatPerServing = (fatPer100g / 100) * baseServingWeight;
+                        const proteinPerServing = (proteinPer100g / 100) * baseServingWeight;
+
+                        // Scale by the servingSizeMultiplier from the GA solution
+                        totalKcal += kcalPerServing * servingSizeMultiplier;
+                        totalCarbs += carbsPerServing * servingSizeMultiplier;
+                        totalFat += fatPerServing * servingSizeMultiplier;
+                        totalProtein += proteinPerServing * servingSizeMultiplier;
+                    }
+                }
+                return { kcal: totalKcal, carbs: totalCarbs, fat: totalFat, protein: totalProtein };
+            }
+
+            function calculateLoss(solution, idealValues) {
+                const actualValues = calculateMacronutrientsForSolution(solution);
+                let loss = 0;
+
+                const lossKcal = idealValues.kcal !== 0 ? Math.pow(((idealValues.kcal - actualValues.kcal) / idealValues.kcal), 2) : (actualValues.kcal !== 0 ? 10 : 0); // Penalize if actual kcal is not zero when ideal is zero
+                const lossCarbs = idealValues.carbs !== 0 ? Math.pow(((idealValues.carbs - actualValues.carbs) / idealValues.carbs), 2) : (actualValues.carbs !== 0 ? 10 : 0);
+                const lossFat = idealValues.fat !== 0 ? Math.pow(((idealValues.fat - actualValues.fat) / idealValues.fat), 2) : (actualValues.fat !== 0 ? 10 : 0);
+                const lossProtein = idealValues.protein !== 0 ? Math.pow(((idealValues.protein - actualValues.protein) / idealValues.protein), 2) : (actualValues.protein !== 0 ? 10 : 0);
+
+
+                loss += lossKcal;
+                loss += lossCarbs;
+                loss += lossFat;
+                loss += lossProtein;
+
+                return loss;
+            }
+
+            function calculateFitness(loss) {
+                return 1 / (1 + loss); // Fitness is inversely proportional to loss
+            }
+
+            function initializePopulation(populationSize, numProducts) {
+                const population = [];
+                for (let i = 0; i < populationSize; i++) {
+                    const solution = Array.from({ length: numProducts }, () => Math.max(0, Math.floor(Math.random() * 10))); // Initialize with serving sizes 0-9
+                    population.push(solution);
+                }
+                return population;
+            }
+
+            function selection(population, fitnesses, numParents) {
+                const parents = [];
+                for (let i = 0; i < numParents; i++) {
+                    let bestFitnessIndex = 0;
+                    for (let j = 1; j < populationSize; j++) {
+                        if (fitnesses[j] > fitnesses[bestFitnessIndex]) {
+                            bestFitnessIndex = j;
+                        }
+                    }
+                    parents.push(population[bestFitnessIndex]);
+                    fitnesses[bestFitnessIndex] = -1; // To avoid selecting the same parent again
+                }
+                return parents;
+            }
+
+            function crossover(parents, offspringPerPair) {
+                const offspring = [];
+                for (let i = 0; i < parents.length; i++) {
+                    for (let j = i + 1; j < parents.length; j++) {
+                        for (let k = 0; k < offspringPerPair; k++) {
+                            const parent1 = parents[i];
+                            const parent2 = parents[j];
+                            const crossoverPoint = Math.floor(Math.random() * numProducts);
+                            const child = [...parent1.slice(0, crossoverPoint), ...parent2.slice(crossoverPoint)];
+                            offspring.push(child);
+                        }
+                    }
+                }
+                return offspring;
+            }
+
+            function mutation(offspring, mutationRate) {
+                const mutatedOffspring = [];
+                for (const child of offspring) {
+                    const mutatedChild = [...child];
+                    for (let i = 0; i < numProducts; i++) {
+                        if (Math.random() < mutationRate) {
+                            mutatedChild[i] = Math.max(0, mutatedChild[i] + (Math.random() < 0.5 ? 1 : -1)); // Increment or decrement by 1
+                        }
+                    }
+                    mutatedOffspring.push(mutatedChild);
+                }
+                return mutatedOffspring;
+            }
+
+
+            let population = initializePopulation(populationSize, numProducts);
+            let bestSolution = null;
+            let minLoss = Infinity;
+
+
+            for (let generation = 0; generation < numGenerations; generation++) {
+                const fitnesses = population.map(solution => calculateFitness(calculateLoss(solution, idealValues)));
+                const parents = selection(population, [...fitnesses], populationSize / 2); // Select top half as parents
+                const offspringFromCrossover = crossover(parents, 2); // Generate 2 offspring per pair
+                const offspringFromMutation = mutation(offspringFromCrossover, mutationRate);
+
+                population = [...parents, ...offspringFromMutation].slice(0, populationSize); // Keep population size constant
+
+
+                const currentBestSolutionIndex = fitnesses.indexOf(Math.max(...fitnesses));
+                const currentBestSolution = population[currentBestSolutionIndex];
+                const currentMinLoss = calculateLoss(currentBestSolution, idealValues);
+
+
+                if (currentMinLoss < minLoss) {
+                    minLoss = currentMinLoss;
+                    bestSolution = currentBestSolution;
+                }
+            }
+
+
+            return { bestSolution: bestSolution, minLoss: minLoss, actualMacros: calculateMacronutrientsForSolution(bestSolution) };
+        }
+
+
+        function displayOptimizationResults(optimizationResult) {
+            const optimizedServingsDisplay = document.getElementById('optimizedServingsDisplay');
+            optimizedServingsDisplay.innerHTML = '';
+
+            if (!optimizationResult.bestSolution) {
+                optimizedServingsDisplay.innerHTML = "<p>Optimization failed to find a solution.</p>";
+                return;
+            }
+
+            const bestSolution = optimizationResult.bestSolution;
+            const actualMacros = optimizationResult.actualMacros;
+
+            selectedProductList.forEach((product, index) => {
+                const servingSizeMultiplier = bestSolution[index];
+                if (servingSizeMultiplier > 0) { // Only display if serving size is greater than 0
+                    const productDiv = document.createElement('div');
+                    productDiv.classList.add('optimizedServing');
+
+                    let productServingSize = product.serving_size || '100g'; // Use product's serving size if available, else default to 100g
+                    productDiv.innerHTML = `<p><strong>${product.product_name_en || product.product_name || 'Product'}</strong>: Serving Size Multiplier: ${servingSizeMultiplier} (x ${productServingSize} serving)</p>`; // Indicate multiplier and base serving size
+                    optimizedServingsDisplay.appendChild(productDiv);
+                }
+            });
+
+            optimizedServingsDisplay.innerHTML += `
+                <h3>Total Macronutrients (Optimized)</h3>
+                <p>Energy: ${actualMacros.kcal ? actualMacros.kcal.toFixed(1) + ' kcal' : 'N/A'},
+                Carbs: ${actualMacros.carbs ? actualMacros.carbs.toFixed(1) + 'g' : 'N/A'},
+                Fat: ${actualMacros.fat ? actualMacros.fat.toFixed(1) + 'g' : 'N/A'},
+                Protein: ${actualMacros.protein ? actualMacros.protein.toFixed(1) + 'g' : 'N/A'}</p>
+            `;
+        }
+
+
+    </script>
+</body>
+</html>

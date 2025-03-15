@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Open Food Facts Search</title>
+    <title>Diet Optimizer</title>
     <style>
         body { font-family: Arial, sans-serif; }
         #searchContainer { margin-bottom: 20px; }
@@ -23,6 +23,7 @@
             cursor: pointer;
             border: 1px solid #eee;
             border-radius: 5px;
+            position: relative; /* For positioning the link button */
         }
         .searchResultItem:hover { background-color: #f0f0f0; }
         .searchResultItem img {
@@ -33,17 +34,27 @@
         }
         .searchResultText { text-align: center; margin-bottom: 5px; font-weight: bold; } /* Bold title */
         .searchResultLink {
-            text-align: center;
-            margin-bottom: 10px;
+            position: absolute; /* Position at the top right corner */
+            top: 5px;
+            right: 5px;
         }
         .searchResultLink a {
-            display: inline-block; /* Make it behave like a block for better padding */
-            padding: 8px 15px;
+            display: inline-flex; /* Use flex to center icon */
+            align-items: center;
+            justify-content: center;
+            width: 25px; /* Small button size */
+            height: 25px;
             background-color: #007bff; /* Example button color */
             color: white;
             text-decoration: none;
-            border-radius: 5px;
+            border-radius: 50%; /* Make it round */
             font-size: 0.9em;
+            padding: 0; /* Reset padding */
+            line-height: 1; /* Ensure vertical centering of icon/text */
+        }
+        .searchResultLink a::before {
+            content: "!"; /* "!" icon */
+            display: block;
         }
         .searchResultMacronutrients { font-size: 0.9em; color: #777; text-align: center; }
 
@@ -59,9 +70,24 @@
             border-radius: 5px;
             padding: 5px; /* Reduced padding for selected items */
             margin-bottom: 0; /* Remove default margin-bottom */
+            position: relative; /* For positioning remove button */
         }
         .selectedProductItem:last-child { border-bottom: none; } /* No border-bottom needed anymore */
         .macronutrients { margin-top: 5px; font-size: 0.9em; color: #555; }
+        .removeProductButton {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 1.2em;
+            cursor: pointer;
+        }
+        .removeProductButton:hover {
+            color: #555;
+        }
+
 
         #optimizerControls { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; }
         #optimizerControls label { display: block; margin-bottom: 5px; }
@@ -72,7 +98,7 @@
     </style>
 </head>
 <body>
-    <h1>Open Food Facts Search</h1>
+    <h1>Diet Optimizer</h1>
 
     <div id="searchContainer">
         <input type="text" id="searchTerm" placeholder="Enter search term (e.g., smuckers)">
@@ -187,8 +213,11 @@
                     linkDiv.classList.add('searchResultLink');
                     const productLink = document.createElement('a');
                     productLink.href = product.url;
-                    productLink.textContent = 'View Product Page'; // Button text
                     productLink.target = '_blank'; // Open in new tab
+                    productLink.textContent = ''; // No text content, icon only is in CSS
+                    productLink.onclick = function(event) { // Add onclick to link
+                        event.stopPropagation(); // Prevent click from propagating to parent
+                    };
                     linkDiv.appendChild(productLink);
                     resultItem.appendChild(linkDiv);
 
@@ -242,10 +271,18 @@
             selectedProductsDiv.innerHTML = '';
 
             if (selectedProductList.length > 0) {
-                selectedProductList.forEach(product => {
+                selectedProductList.forEach((product, index) => { // Added index here
                     const productDiv = document.createElement('div');
                     productDiv.classList.add('selectedProductItem');
                     productDiv.innerHTML = `<h3>${product.product_name_en || product.product_name || 'Product Name Unavailable'}</h3>`;
+
+                    // Remove button
+                    const removeButton = document.createElement('button');
+                    removeButton.classList.add('removeProductButton');
+                    removeButton.innerHTML = '&times;'; // "Times" symbol for remove icon
+                    removeButton.onclick = () => removeSelectedProduct(index); // Call remove function with correct index
+                    productDiv.appendChild(removeButton);
+
 
                     const macronutrientsDiv = document.createElement('div');
                     macronutrientsDiv.classList.add('macronutrients');
@@ -272,6 +309,12 @@
                 selectedProductsDiv.innerHTML = '<p>No products selected yet.</p>';
             }
         }
+
+        function removeSelectedProduct(index) {
+            selectedProductList.splice(index, 1); // Remove product from the array
+            displaySelectedProducts(); // Re-render the selected products list
+        }
+
 
         function optimizeServingSizes() {
             const idealKcal = parseFloat(document.getElementById('idealKcal').value);

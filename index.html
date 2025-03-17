@@ -39,6 +39,64 @@
             position: relative;
             top: 1px;
         }
+
+        .fruit-button {
+            background-color: #FFDAB9; /* Peach color for a fruit-like background */
+            border: 1px solid #E9967A; /* Light Salmon border */
+            color: #8B4513; /* Saddle Brown text color for contrast */
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+
+        .fruit-button:hover {
+            background-color: #FFA07A; /* Light Salmon on hover */
+        }
+
+        .fruit-button:active {
+            background-color: #FA8072; /* Salmon on active */
+        }
+
+        .nav-bar {
+            display: flex; /* Enable flexbox for the nav-bar */
+            align-items: stretch; /* Make buttons stretch to equal height */
+        }
+
+        .nav-bar button:nth-child(1) { /* Nathanael */
+            background-color: #E0E0E0; /* Light Gray */
+            color: black;
+        }
+
+        .nav-bar button:nth-child(2) { /* Squishy Cube */
+            background-color: #FFFFE0; /* Light Yellow */
+            color: black;
+        }
+
+        .nav-bar button:nth-child(3) { /* Particles */
+            background-color: #ADD8E6; /* Light Blue */
+            color: black;
+        }
+
+        .nav-bar button:nth-child(4) { /* OCR */
+            background-color: #90EE90; /* Light Green */
+            color: black;
+        }
+        .nav-bar button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .nav-bar button:hover {
+            opacity: 0.8; /* সামান্য hover effect */
+        }
     </style>
 </head>
 <body>
@@ -87,12 +145,12 @@
 
     <!-- Navigation Bar -->
     <nav class="nav-bar">
-        <button onclick="window.location.href='nathanael'">Nathanael</button>
-        <button onclick="window.location.href='stretch'">Squishy Cube</button>
-        <button onclick="window.location.href='dots'">Particle Simulator</button>
-        <button onclick="window.location.href='ocr'">OCR</button>
-        <button onclick="window.location.href='invisible'" class="shiny-button">Invisible</button>
-        <button onclick="window.location.href='/swordartonline'" style="background-color: darkred; color: white;">Sword Art Online ⚔</button>
+        <button onclick="window.location.href='nathanael'" style="background-color: lightgray;">Nathanael🤠</button>
+        <button onclick="window.location.href='stretch'" style="background-color: lightyellow;">Squishy Cube🟨</button>
+        <button onclick="window.location.href='dots'" style="background-color: lightblue;">Particles🔵</button>
+        <button onclick="window.location.href='ocr'" style="background-color: lightgreen;">OCR🔍</button>
+        <button onclick="window.location.href='invisible'" class="shiny-button">Invisible👤</button>
+        <button onclick="window.location.href='food'" class="fruit-button">Food 🍇</button>
     </nav>
 
     <script src="main.js"></script>

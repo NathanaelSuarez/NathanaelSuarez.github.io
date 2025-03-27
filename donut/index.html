@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Spinning ASCII Donut</title>
+<meta charset="utf-8">
+<style>
+  body {
+    background-color: black;
+    color: white;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 12px; /* Adjust font size as needed */
+    line-height: 1.0; /* Tighten line spacing */
+    margin: 0;
+    padding: 0;
+    /* Optional: Center the donut */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden; /* Hide scrollbars if donut is large */
+  }
+  pre {
+    white-space: pre; /* Crucial for ASCII art */
+  }
+</style>
+</head>
+<body>
+
+<pre id="donut"></pre>
+
+<script>
+(function() {
+    const preTag = document.getElementById('donut');
+
+    // Parameters (tweak these)
+    const R1 = 1;
+    const R2 = 2;
+    const K2 = 5;
+    const canvasWidth = 80; // characters wide
+    const canvasHeight = 40; // characters high
+    const K1 = Math.min(canvasWidth, canvasHeight) * K2 * 3 / (8 * (R1 + R2)); // Scale based on dimensions
+
+    const chars = ".,-~:;=!*#$@".split(''); // Luminance characters
+
+    let A = 0; // Rotation angle around X-axis
+    let B = 0; // Rotation angle around Z-axis
+
+    function renderAsciiFrame() {
+        const b = Array(canvasWidth * canvasHeight).fill(' '); // Output buffer (characters)
+        const z = Array(canvasWidth * canvasHeight).fill(0);    // Z-buffer (depth)
+
+        const cA = Math.cos(A), sA = Math.sin(A);
+        const cB = Math.cos(B), sB = Math.sin(B);
+
+        // Theta goes around the cross-sectional circle of the torus
+        for (let theta = 0; theta < 2 * Math.PI; theta += 0.07) { // Increase step for performance, decrease for detail
+            const ct = Math.cos(theta), st = Math.sin(theta);
+
+            // Phi goes around the major circle of the torus
+            for (let phi = 0; phi < 2 * Math.PI; phi += 0.02) { // Increase step for performance, decrease for detail
+                const cp = Math.cos(phi), sp = Math.sin(phi);
+
+                // Coordinates of the point on the torus surface before rotation
+                const circleX = R2 + R1 * ct;
+                const circleY = R1 * st;
+
+                // 3D coordinates after rotations
+                const x = circleX * (cB * cp + sA * sB * sp) - circleY * cA * sB;
+                const y = circleX * (sB * cp - sA * cB * sp) + circleY * cA * cB;
+                const z_ = K2 + circleX * cA * sp + circleY * sA;
+                const ooz = 1 / z_; // One over z
+
+                // Project onto 2D screen
+                const xp = Math.floor(canvasWidth / 2 + K1 * ooz * x);
+                const yp = Math.floor(canvasHeight / 2 - K1 * ooz * y); // Y increases downwards on screen
+
+                // Calculate luminance (dot product of surface normal with light direction)
+                // Light direction = (0, 1, -1) normalized (or similar) - simplified here
+                const L = cp * ct * sB - cA * ct * sp - sA * st + cB * (cA * st - ct * sA * sp);
+
+                // Only draw if point is inside canvas and closer than what's already there
+                const idx = xp + canvasWidth * yp;
+                if (xp >= 0 && xp < canvasWidth && yp >= 0 && yp < canvasHeight && ooz > z[idx]) {
+                    z[idx] = ooz;
+                    const luminance_index = Math.floor(Math.max(0, L * 8)); // L ranges roughly -sqrt(2) to +sqrt(2) -> scale to 0-11
+                    b[idx] = chars[luminance_index];
+                }
+            }
+        }
+
+        // Format the buffer into a string and display
+        let frame = "";
+        for (let k = 0; k < canvasWidth * canvasHeight; k++) {
+            frame += (k % canvasWidth ? b[k] : '\n' + b[k]);
+        }
+        preTag.textContent = frame;
+
+        // Update angles for the next frame
+        A += 0.04;
+        B += 0.02;
+
+        // Loop the animation
+        // Use requestAnimationFrame for smoother animation if available
+        if (window.requestAnimationFrame) {
+            requestAnimationFrame(renderAsciiFrame);
+        } else {
+            setTimeout(renderAsciiFrame, 16); // Fallback to ~60fps
+        }
+    }
+
+    // Start the animation
+    if (window.requestAnimationFrame) {
+        requestAnimationFrame(renderAsciiFrame);
+    } else {
+        setTimeout(renderAsciiFrame, 16);
+    }
+
+})();
+</script>
+
+</body>
+</html>

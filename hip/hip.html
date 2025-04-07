@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absurd Hip Widener</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            color: #333;
+        }
+        #container {
+            position: relative;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        /* Visible canvas */
+        #outputCanvas {
+            display: block;
+            background-color: #000; /* Show black until video loads */
+        }
+        /* Hidden video element */
+        #webcamVideo {
+            display: none;
+            /* Forcing specific aspect ratio if needed, but canvas size will match */
+            /* width: 640px;
+            height: 480px; */
+        }
+         /* Hidden buffer canvas */
+        #bufferCanvas {
+            display: none;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 1.1em;
+            color: #555;
+            min-height: 1.5em; /* Reserve space */
+            text-align: center;
+        }
+         #controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+         label {
+            font-size: 0.9em;
+         }
+         input[type="range"] {
+            width: 150px;
+         }
+         #wideningValue {
+            font-weight: bold;
+            min-width: 30px; /* Prevent layout shifts */
+            text-align: right;
+         }
+    </style>
+    <!-- Load TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.20.0/dist/tf-converter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.20.0/dist/tf-backend-webgl.min.js"></script>
+    <!-- Load Pose Detection model -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+
+</head>
+<body>
+    <h1>Hip</h1>
+    <div id="status">Initializing...</div>
+    <div id="container">
+        <!-- The video element for webcam input (hidden) -->
+        <video id="webcamVideo" playsinline autoplay muted></video>
+        <!-- The canvas to draw the processed output -->
+        <canvas id="outputCanvas"></canvas>
+        <!-- A hidden canvas for intermediate processing -->
+        <canvas id="bufferCanvas"></canvas>
+    </div>
+    <div id="controls">
+        <label for="wideningFactor">Widening:</label>
+        <input type="range" id="wideningFactor" min="1.0" max="3.0" step="0.1" value="1.8">
+        <span id="wideningValue">1.8x</span>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('webcamVideo');
+        const outputCanvas = document.getElementById('outputCanvas');
+        const bufferCanvas = document.getElementById('bufferCanvas'); // Hidden canvas
+        const outputCtx = outputCanvas.getContext('2d');
+        const bufferCtx = bufferCanvas.getContext('2d'); // Hidden context
+        const statusElement = document.getElementById('status');
+        const wideningSlider = document.getElementById('wideningFactor');
+        const wideningValueSpan = document.getElementById('wideningValue');
+
+        let detector;
+        let rafId; // requestAnimationFrame ID
+
+        const MIN_CONFIDENCE = 0.3; // Minimum confidence score for hip keypoints
+        // How far above and below the hip line the effect extends (as fraction of hip width)
+        const EFFECT_VERTICAL_SCALE = 1.0;
+
+        let currentMaxWideningFactor = parseFloat(wideningSlider.value);
+
+        wideningSlider.addEventListener('input', (event) => {
+            currentMaxWideningFactor = parseFloat(event.target.value);
+            wideningValueSpan.textContent = `${currentMaxWideningFactor.toFixed(1)}x`;
+        });
+
+        async function setupWebcam() {
+            statusElement.textContent = 'Requesting webcam access...';
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' }, // Use front camera
+                    audio: false
+                });
+                videoElement.srcObject = stream;
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        statusElement.textContent = 'Webcam ready.';
+                        resolve(videoElement);
+                    };
+                });
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                statusElement.textContent = `Error accessing webcam: ${err.message}. Please grant permission and reload.`;
+                throw err; // Propagate error
+            }
+        }
+
+        async function loadModel() {
+            statusElement.textContent = 'Loading pose detection model...';
+            try {
+                // Use MoveNet Lightning for faster performance
+                const detectorConfig = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
+                detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+                statusElement.textContent = 'Model loaded.';
+                console.log('Pose detector loaded:', detector);
+            } catch (error) {
+                 console.error("Error loading model:", error);
+                 statusElement.textContent = `Error loading model: ${error.message}`;
+                 throw error; // Propagate error
+            }
+        }
+
+        async function render() {
+            if (!detector || videoElement.readyState < 3) { // Make sure video has data
+                rafId = requestAnimationFrame(render);
+                return;
+            }
+
+            // 1. Estimate Poses
+            let poses = [];
+            try {
+                 poses = await detector.estimatePoses(videoElement, {
+                    maxPoses: 1, // We only care about one person
+                    flipHorizontal: false // We'll handle flipping if needed based on camera
+                 });
+            } catch (error) {
+                console.error("Error during pose estimation:", error);
+                // Potentially stop the loop or try to recover
+                // For now, just draw the original frame
+                outputCtx.drawImage(videoElement, 0, 0, outputCanvas.width, outputCanvas.height);
+                rafId = requestAnimationFrame(render);
+                return;
+            }
+
+
+            // 2. Draw original video onto the hidden buffer canvas
+            // Ensure buffer canvas matches output canvas size
+            if (bufferCanvas.width !== outputCanvas.width || bufferCanvas.height !== outputCanvas.height) {
+                 bufferCanvas.width = outputCanvas.width;
+                 bufferCanvas.height = outputCanvas.height;
+            }
+            bufferCtx.clearRect(0, 0, bufferCanvas.width, bufferCanvas.height); // Clear previous frame
+            // Flip the image horizontally if using front camera (mirrored view)
+            bufferCtx.save();
+            bufferCtx.scale(-1, 1); // Flip horizontally
+            bufferCtx.translate(-bufferCanvas.width, 0); // Adjust position after flipping
+            bufferCtx.drawImage(videoElement, 0, 0, bufferCanvas.width, bufferCanvas.height);
+            bufferCtx.restore(); // Restore context to normal
+
+
+            // 3. Get pixel data from the buffer canvas
+            const sourceImageData = bufferCtx.getImageData(0, 0, bufferCanvas.width, bufferCanvas.height);
+            const sourceData = sourceImageData.data;
+
+            // 4. Create target ImageData for the output canvas
+            const outputImageData = outputCtx.createImageData(outputCanvas.width, outputCanvas.height);
+            const outputData = outputImageData.data;
+
+            let leftHip = null;
+            let rightHip = null;
+
+            if (poses && poses.length > 0 && poses[0].keypoints) {
+                // Because we flipped the drawing, left/right are swapped visually
+                // We need the *visually* left/right hips on the flipped image
+                 const kp = poses[0].keypoints;
+                 // Find the keypoints in the *original* video frame coordinates
+                 const originalLeftHip = kp.find(k => k.name === 'left_hip' && k.score > MIN_CONFIDENCE);
+                 const originalRightHip = kp.find(k => k.name === 'right_hip' && k.score > MIN_CONFIDENCE);
+
+                // Now map these to the *flipped* canvas coordinates
+                if (originalLeftHip) {
+                    // Original left hip becomes visually right on the flipped canvas
+                    rightHip = {
+                         x: bufferCanvas.width - originalLeftHip.x, // Flipped X
+                         y: originalLeftHip.y,
+                         score: originalLeftHip.score
+                    };
+                }
+                if (originalRightHip) {
+                     // Original right hip becomes visually left on the flipped canvas
+                    leftHip = {
+                         x: bufferCanvas.width - originalRightHip.x, // Flipped X
+                         y: originalRightHip.y,
+                         score: originalRightHip.score
+                    };
+                }
+            }
+
+            // 5. Process Pixels and Apply Liquify
+            if (leftHip && rightHip) {
+                statusElement.textContent = 'Applying effect...';
+                const hipCenterX = (leftHip.x + rightHip.x) / 2;
+                const hipCenterY = (leftHip.y + rightHip.y) / 2;
+                const hipWidth = Math.abs(leftHip.x - rightHip.x);
+
+                // Define vertical range for the effect
+                const effectHeight = hipWidth * EFFECT_VERTICAL_SCALE;
+                const minY = Math.max(0, hipCenterY - effectHeight / 2);
+                const maxY = Math.min(bufferCanvas.height, hipCenterY + effectHeight / 2);
+
+                for (let y = 0; y < bufferCanvas.height; y++) {
+                    let currentWarpFactor = 1.0; // Default: no warp
+
+                    // Check if y is within the effect zone
+                    if (y >= minY && y < maxY && effectHeight > 0) {
+                        // Calculate vertical position within the effect zone (0 to 1)
+                        const relativeY = (y - minY) / effectHeight;
+
+                        // Calculate warp factor based on a curve (e.g., sine curve peaking at 0.5)
+                        // Strength = (maxFactor - 1) * sin(pi * relativePos)
+                        // TotalFactor = 1 + Strength
+                        const curveFactor = Math.sin(relativeY * Math.PI); // Peaks at 1 when relativeY is 0.5
+                        currentWarpFactor = 1.0 + (currentMaxWideningFactor - 1.0) * curveFactor;
+                    }
+
+                    for (let x = 0; x < bufferCanvas.width; x++) {
+                        let sourceX = x; // Default: sample from the same x
+
+                        if (currentWarpFactor > 1.0) { // Only modify if warping
+                             // Calculate sourceX based on warping from the hip center X
+                            if (x < hipCenterX) {
+                                // Pixel is to the left of center: Move source towards center
+                                sourceX = hipCenterX - (hipCenterX - x) / currentWarpFactor;
+                            } else {
+                                // Pixel is to the right of center: Move source towards center
+                                sourceX = hipCenterX + (x - hipCenterX) / currentWarpFactor;
+                            }
+                        }
+
+                        // Clamp sourceX to be within image bounds and round to nearest pixel
+                        sourceX = Math.round(Math.max(0, Math.min(bufferCanvas.width - 1, sourceX)));
+
+                        // Calculate indices for source (buffer) and target (output)
+                        const targetIndex = (y * bufferCanvas.width + x) * 4;
+                        const sourceIndex = (y * bufferCanvas.width + sourceX) * 4;
+
+                        // Copy RGBA values from source pixel to target pixel
+                        outputData[targetIndex]     = sourceData[sourceIndex];     // R
+                        outputData[targetIndex + 1] = sourceData[sourceIndex + 1]; // G
+                        outputData[targetIndex + 2] = sourceData[sourceIndex + 2]; // B
+                        outputData[targetIndex + 3] = sourceData[sourceIndex + 3]; // A (usually 255)
+                    }
+                }
+                 // Optional: Draw detected hip keypoints for debugging (on top of warped image)
+                // outputCtx.fillStyle = 'red';
+                // outputCtx.beginPath();
+                // outputCtx.arc(leftHip.x, leftHip.y, 5, 0, 2 * Math.PI);
+                // outputCtx.fill();
+                // outputCtx.fillStyle = 'lime';
+                // outputCtx.beginPath();
+                // outputCtx.arc(rightHip.x, rightHip.y, 5, 0, 2 * Math.PI);
+                // outputCtx.fill();
+
+            } else {
+                // No hips detected or low confidence, just copy the buffer data directly
+                 statusElement.textContent = 'Detecting pose... (Ensure hips are visible)';
+                 outputData.set(sourceData); // Faster than iterating if no effect is applied
+            }
+
+
+            // 6. Draw the processed image data onto the visible canvas
+            outputCtx.putImageData(outputImageData, 0, 0);
+
+            // 7. Loop
+            rafId = requestAnimationFrame(render);
+        }
+
+        async function main() {
+            try {
+                await tf.setBackend('webgl'); // Use WebGL backend for performance
+                await loadModel();
+                const video = await setupWebcam();
+
+                video.play(); // Start playing the video
+
+                // Set canvas dimensions once video dimensions are known
+                outputCanvas.width = video.videoWidth;
+                outputCanvas.height = video.videoHeight;
+                 bufferCanvas.width = video.videoWidth; // Match buffer size
+                 bufferCanvas.height = video.videoHeight;
+
+                statusElement.textContent = 'Starting detection loop...';
+                render(); // Start the detection and rendering loop
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                statusElement.textContent = `Initialization failed: ${error.message}`;
+                // No need to call requestAnimationFrame here if setup failed
+            }
+        }
+
+        // Start the application
+        main();
+
+        // Cleanup function (optional, but good practice)
+        window.addEventListener('beforeunload', () => {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+            }
+            if (detector) {
+                 detector.dispose();
+            }
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+            }
+        });
+
+    </script>
+</body>
+</html>

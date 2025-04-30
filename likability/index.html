@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selfie Rating Predictor</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+            background-color: #f4f4f4;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #333;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+            margin: 5px;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        #status, #trainingStatus, #predictionResult {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #333;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            min-height: 30px;
+            white-space: pre-wrap; /* Keep formatting for status */
+            word-wrap: break-word;
+        }
+        #correlationInfo {
+             font-size: 0.9em;
+             color: #555;
+             max-height: 150px;
+             overflow-y: auto;
+             border-top: 1px solid #eee;
+             margin-top: 10px;
+             padding-top: 10px;
+        }
+        .webcam-section {
+             text-align: center;
+        }
+        #webcamVideo {
+            display: block;
+            margin: 10px auto;
+            border: 1px solid #ccc;
+            max-width: 100%;
+            height: auto;
+             background-color: #eee; /* Placeholder bg */
+        }
+        #captureCanvas {
+            display: none; /* Hidden canvas for capturing */
+        }
+        #capturedImagePreview {
+             display: block;
+             margin: 10px auto;
+             max-width: 200px;
+             max-height: 150px;
+             border: 1px solid #ddd;
+        }
+        #predictionResult {
+             font-size: 1.2em;
+             text-align: center;
+             background-color: #e9f5ff;
+             border-color: #b8d6f0;
+        }
+        .note {
+            font-size: 0.9em;
+            color: #777;
+            margin-top: 5px;
+        }
+    </style>
+    <!-- Load TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <!-- Load Transformers.js (as module) -->
+    <script type="module" src="app.js"></script>
+
+</head>
+<body>
+
+<h1>Selfie Rating Predictor</h1>
+
+<div class="container">
+    <h2>1. Load Data & Train Model</h2>
+    <button id="loadTrainButton">Load Data and Train Predictor</button>
+    <div id="status">Status: Waiting to start...</div>
+    <div id="trainingStatus">Training Status: ---</div>
+    <div id="correlationInfo">Correlation Info: ---</div>
+</div>
+
+<div class="container webcam-section" id="webcamContainer" style="display: none;">
+    <h2>2. Capture Your Image</h2>
+    <video id="webcamVideo" autoplay playsinline muted></video>
+    <canvas id="captureCanvas"></canvas>
+    <img id="capturedImagePreview" src="#" alt="Captured Image" style="display: none;"/>
+    <button id="captureButton" disabled>Capture Image</button>
+    <p class="note">Allow webcam access when prompted.</p>
+</div>
+
+<div class="container prediction-section" id="predictionContainer" style="display: none;">
+    <h2>3. Predict Rating</h2>
+    <button id="predictButton" disabled>Predict Rating for Captured Image</button>
+    <div id="predictionResult">Prediction: ---</div>
+</div>
+
+<script type="module">
+    // Import Transformers.js components (assuming app.js is the entry point)
+    import { AutoProcessor, AutoModel, env, RawImage, Tensor } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+
+    // --- Configuration ---
+    const JSON_PATH = 'image_embeddings_rated.json'; // Assumed in same directory
+    // Note: Image directory path isn't directly used here, but assumes images were in 'Selfie/' relative to the original JSON generation context if filenames are relative.
+    const DINO_MODEL_NAME = 'Xenova/dinov2-small';
+    const EXPECTED_DINO_DIM = 384;
+    const NUM_TOP_FEATURES = 5; // Use top 5 correlated features
+    const TF_EPOCHS = 50; // Adjust as needed
+    const TF_BATCH_SIZE = 8;
+    const TF_LEARNING_RATE = 0.01; // Adam optimizer default is often fine, but can tune
+
+    // --- DOM Elements ---
+    const loadTrainButton = document.getElementById('loadTrainButton');
+    const status = document.getElementById('status');
+    const trainingStatus = document.getElementById('trainingStatus');
+    const correlationInfo = document.getElementById('correlationInfo');
+    const webcamContainer = document.getElementById('webcamContainer');
+    const webcamVideo = document.getElementById('webcamVideo');
+    const captureCanvas = document.getElementById('captureCanvas');
+    const captureButton = document.getElementById('captureButton');
+    const capturedImagePreview = document.getElementById('capturedImagePreview');
+    const predictionContainer = document.getElementById('predictionContainer');
+    const predictButton = document.getElementById('predictButton');
+    const predictionResult = document.getElementById('predictionResult');
+
+    // --- State Variables ---
+    let dinoProcessor = null;
+    let dinoModel = null;
+    let isDinoModelReady = false;
+    let trainingData = null; // { filename: { embedding: [], selectionPercent: float, ... }, ... }
+    let trainedModel = null; // The TensorFlow.js model
+    let topFeatureIndices = []; // Indices of the 5 features used for training
+    let capturedImageDataUrl = null;
+    let isTraining = false;
+
+    // --- Helper Functions ---
+    function updateStatus(message, isError = false) {
+        console.log("Status:", message);
+        status.textContent = `Status: ${message}`;
+        status.style.color = isError ? 'red' : '#333';
+    }
+
+    function updateTrainingStatus(message) {
+        trainingStatus.textContent = `Training Status: ${message}`;
+    }
+
+     function updateCorrelationInfo(indices, correlations) {
+         let text = `Top ${NUM_TOP_FEATURES} Correlated Feature Indices (Absolute Correlation):\n`;
+         indices.forEach((index, i) => {
+             text += `  ${i+1}. Index ${index} (Correlation: ${correlations[i].toFixed(4)})\n`;
+         });
+         correlationInfo.textContent = text;
+     }
+
+
+    // --- DinoV2 Model Loading (for prediction) ---
+    async function loadDinoModel() {
+        updateStatus('Loading DinoV2 Processor & Model (for prediction)...');
+        try {
+            // Configure Transformers.js environment
+            env.allowLocalModels = false;
+            env.backends.onnx.wasm.numThreads = Math.min(navigator.hardwareConcurrency || 1, 4);
+            env.allowMissingFiles = true;
+
+            dinoProcessor = await AutoProcessor.from_pretrained(DINO_MODEL_NAME);
+            dinoModel = await AutoModel.from_pretrained(DINO_MODEL_NAME, {
+                 quantized: true,
+                 // No progress callback here to keep it simpler, happens in background
+            });
+            isDinoModelReady = true;
+            updateStatus('DinoV2 model ready for prediction.');
+             checkPredictButtonState(); // Check if predict can be enabled now
+        } catch (error) {
+            console.error('Error loading DinoV2 model:', error);
+            updateStatus(`Error loading DinoV2 model: ${error.message}. Prediction will fail.`, true);
+            isDinoModelReady = false;
+        }
+    }
+    // Start loading DinoV2 immediately
+    loadDinoModel();
+
+
+    // --- Data Loading and Training ---
+    loadTrainButton.addEventListener('click', handleLoadAndTrain);
+
+    async function handleLoadAndTrain() {
+        if (isTraining) return;
+        isTraining = true;
+        loadTrainButton.disabled = true;
+        updateStatus('Loading training data...');
+        updateTrainingStatus('Loading JSON...');
+        correlationInfo.textContent = 'Correlation Info: ---'; // Reset
+        webcamContainer.style.display = 'none'; // Hide webcam until trained
+        predictionContainer.style.display = 'none'; // Hide prediction until trained
+
+        try {
+            // 1. Fetch and Parse JSON
+            const response = await fetch(JSON_PATH);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - Could not fetch ${JSON_PATH}`);
+            }
+            trainingData = await response.json();
+            updateStatus('JSON data loaded. Preparing data for training...');
+
+            // 2. Prepare Data for TF.js
+            const filenames = Object.keys(trainingData);
+            if (filenames.length === 0) {
+                throw new Error("JSON data is empty or invalid.");
+            }
+
+            let embeddings = [];
+            let percentages = [];
+            let firstEmbeddingLength = -1;
+
+            for (const filename of filenames) {
+                const item = trainingData[filename];
+                if (item && Array.isArray(item.embedding) && typeof item.selectionPercent === 'number' && !isNaN(item.selectionPercent)) {
+                    // Basic validation
+                     if(firstEmbeddingLength === -1) {
+                        firstEmbeddingLength = item.embedding.length;
+                        if(firstEmbeddingLength !== EXPECTED_DINO_DIM) {
+                             console.warn(`Warning: Embedding dimension (${firstEmbeddingLength}) doesn't match expected DinoV2-small dimension (${EXPECTED_DINO_DIM}).`);
+                             // Proceed anyway, but it might indicate an issue with the source JSON
+                        }
+                     } else if (item.embedding.length !== firstEmbeddingLength) {
+                         console.warn(`Skipping ${filename}: Inconsistent embedding length (${item.embedding.length} vs ${firstEmbeddingLength}).`);
+                         continue;
+                     }
+
+                    embeddings.push(item.embedding);
+                    // Scale percentage from 0-100 to 0-1 for logistic regression target
+                    percentages.push(Math.min(1, Math.max(0, item.selectionPercent / 100.0)));
+                } else {
+                    console.warn(`Skipping invalid entry for ${filename}:`, item);
+                }
+            }
+
+            if (embeddings.length < NUM_TOP_FEATURES + 1 || embeddings.length < 10) { // Need enough data and features
+                throw new Error(`Insufficient valid data for training (need at least ${Math.max(NUM_TOP_FEATURES+1, 10)} samples with valid embeddings and selectionPercent). Found ${embeddings.length}.`);
+            }
+             if(firstEmbeddingLength < NUM_TOP_FEATURES) {
+                  throw new Error(`Number of embedding features (${firstEmbeddingLength}) is less than the required top features (${NUM_TOP_FEATURES}).`);
+             }
+
+            const numSamples = embeddings.length;
+            const numFeatures = embeddings[0].length;
+            updateStatus(`Data prepared: ${numSamples} samples, ${numFeatures} features per sample.`);
+
+            // Convert to Tensors
+            const xTensor = tf.tensor2d(embeddings, [numSamples, numFeatures]);
+            const yTensor = tf.tensor1d(percentages);
+
+             // 3. Feature Selection based on Correlation
+             updateTrainingStatus('Calculating feature correlations...');
+             await tf.nextFrame(); // Allow UI update
+
+             const correlations = [];
+             const yMean = yTensor.mean().dataSync()[0];
+             const yStdDev = tf.sqrt(yTensor.sub(yMean).square().mean()).dataSync()[0];
+
+             if (yStdDev === 0) {
+                throw new Error("Target variable (selectionPercent) has zero variance. Cannot calculate correlations.");
+             }
+
+
+             for (let j = 0; j < numFeatures; j++) {
+                 const featureCol = xTensor.slice([0, j], [numSamples, 1]).reshape([numSamples]); // Get j-th column as 1D tensor
+                 const xMean = featureCol.mean().dataSync()[0];
+                 const xStdDev = tf.sqrt(featureCol.sub(xMean).square().mean()).dataSync()[0];
+
+                 let correlation = 0;
+                 if (xStdDev > 0) { // Avoid division by zero
+                     const covariance = featureCol.sub(xMean).mul(yTensor.sub(yMean)).mean().dataSync()[0];
+                     correlation = covariance / (xStdDev * yStdDev);
+                 }
+                 correlations.push({ index: j, value: isNaN(correlation) ? 0 : correlation }); // Store index and correlation
+             }
+
+
+             // Sort by absolute correlation value, descending
+             correlations.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+             // Get top N feature indices and their correlations
+             topFeatureIndices = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.index);
+             const topCorrelations = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.value);
+             updateCorrelationInfo(topFeatureIndices, topCorrelations); // Display info
+             updateStatus(`Identified top ${NUM_TOP_FEATURES} features. Preparing final training data.`);
+
+             // Filter xTensor to keep only top features
+             const xTensorTopFeatures = xTensor.gather(topFeatureIndices, 1); // axis=1 for columns
+
+            // 4. Define and Train Logistic Regression Model
+            updateTrainingStatus('Defining TF.js model...');
+             await tf.nextFrame();
+
+             trainedModel = tf.sequential();
+             trainedModel.add(tf.layers.dense({
+                inputShape: [NUM_TOP_FEATURES], // Input is now only the top features
+                units: 1,                    // Single output neuron
+                activation: 'sigmoid'        // Sigmoid for 0-1 output
+             }));
+
+            trainedModel.compile({
+                 optimizer: tf.train.adam(TF_LEARNING_RATE),
+                 loss: tf.losses.binaryCrossentropy, // Appropriate for sigmoid output
+                 metrics: ['accuracy'] // Monitor accuracy (treat as binary classification for metric)
+             });
+
+            updateTrainingStatus(`Training model for ${TF_EPOCHS} epochs...`);
+            await tf.nextFrame();
+
+            const history = await trainedModel.fit(xTensorTopFeatures, yTensor, {
+                epochs: TF_EPOCHS,
+                batchSize: TF_BATCH_SIZE,
+                //validationSplit: 0.2, // Optional: Use part of data for validation
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                         updateTrainingStatus(`Training... Epoch ${epoch + 1}/${TF_EPOCHS}, Loss: ${logs.loss.toFixed(4)}`);
+                        // Optional: Add accuracy log: , Acc: ${logs.acc?.toFixed(4)}`
+                         console.log(`Epoch ${epoch + 1}`, logs);
+                    }
+                }
+            });
+
+            // Clean up tensors no longer needed
+            xTensor.dispose();
+            yTensor.dispose();
+            xTensorTopFeatures.dispose();
+
+
+            updateTrainingStatus('Model training complete!');
+            updateStatus('Model trained successfully. Ready for webcam capture.');
+            webcamContainer.style.display = 'block';
+            predictionContainer.style.display = 'block';
+            startWebcam(); // Automatically start webcam after training
+
+        } catch (error) {
+            console.error("Error during loading or training:", error);
+            updateStatus(`Error: ${error.message}`, true);
+            updateTrainingStatus('Failed.');
+            trainedModel = null; // Ensure model is null on error
+        } finally {
+            isTraining = false;
+            loadTrainButton.disabled = false; // Re-enable button
+        }
+    }
+
+
+    // --- Webcam Handling ---
+    async function startWebcam() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            updateStatus("Webcam access not supported by this browser.", true);
+            captureButton.disabled = true;
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); // Prefer front camera
+            webcamVideo.srcObject = stream;
+            webcamVideo.onloadedmetadata = () => {
+                captureButton.disabled = false;
+                 updateStatus('Webcam started. Position yourself and capture.');
+                 // Set canvas dimensions once video is loaded
+                 captureCanvas.width = webcamVideo.videoWidth;
+                 captureCanvas.height = webcamVideo.videoHeight;
+            };
+        } catch (err) {
+            console.error("Error accessing webcam:", err);
+            updateStatus(`Error accessing webcam: ${err.message}. Check browser permissions.`, true);
+            captureButton.disabled = true;
+        }
+    }
+
+    captureButton.addEventListener('click', () => {
+         if (webcamVideo.srcObject && webcamVideo.readyState >= 3) { // Check if video is ready
+             const context = captureCanvas.getContext('2d');
+             context.drawImage(webcamVideo, 0, 0, captureCanvas.width, captureCanvas.height);
+             capturedImageDataUrl = captureCanvas.toDataURL('image/jpeg'); // Or 'image/png'
+             capturedImagePreview.src = capturedImageDataUrl;
+             capturedImagePreview.style.display = 'block';
+             updateStatus('Image captured. Ready to predict.');
+             checkPredictButtonState();
+         } else {
+             updateStatus('Webcam not ready yet.', true);
+         }
+    });
+
+    // --- Prediction ---
+    predictButton.addEventListener('click', predictWebcamImage);
+
+    function checkPredictButtonState() {
+        // Enable prediction only if Dino model is ready, TF model is trained, and an image is captured
+        predictButton.disabled = !(isDinoModelReady && trainedModel && capturedImageDataUrl);
+    }
+
+    async function getDinoEmbedding(imageDataUrl) {
+        if (!isDinoModelReady || !dinoProcessor || !dinoModel) {
+            throw new Error("DinoV2 model/processor not ready.");
+        }
+        try {
+            const image = await RawImage.fromURL(imageDataUrl);
+            const inputs = await dinoProcessor(image);
+            const output = await dinoModel(inputs);
+
+            if (!output || !output.last_hidden_state) {
+                 throw new Error("Failed to get 'last_hidden_state' from DinoV2 model output.");
+            }
+            const lastHiddenState = output.last_hidden_state;
+            if (!(lastHiddenState instanceof Tensor) || lastHiddenState.dims.length !== 3 || lastHiddenState.dims[0] !== 1) {
+                 throw new Error("Invalid 'last_hidden_state' format from DinoV2.");
+            }
+            const hidden_dim = lastHiddenState.dims[2];
+            const tensorData = lastHiddenState.data; // Float32Array
+            const clsEmbeddingData = tensorData.slice(0, hidden_dim);
+
+            if (clsEmbeddingData.length !== hidden_dim) {
+                 throw new Error("Failed to extract correct CLS embedding slice from DinoV2 data.");
+            }
+            return clsEmbeddingData; // Return Float32Array
+
+        } catch (error) {
+            console.error("Error getting DinoV2 embedding:", error);
+            throw error; // Re-throw
+        }
+    }
+
+
+    async function predictWebcamImage() {
+        if (!trainedModel || !capturedImageDataUrl || !isDinoModelReady) {
+            updateStatus("Cannot predict: Model not trained, image not captured, or DinoV2 not ready.", true);
+            return;
+        }
+        if (topFeatureIndices.length !== NUM_TOP_FEATURES) {
+             updateStatus("Cannot predict: Top feature indices not determined correctly.", true);
+            return;
+        }
+
+        predictButton.disabled = true;
+        predictionResult.textContent = 'Prediction: Processing...';
+        updateStatus('Calculating embedding for captured image...');
+
+        try {
+            // 1. Get DinoV2 embedding for the captured image
+            const fullEmbedding = await getDinoEmbedding(capturedImageDataUrl); // Get Float32Array
+
+             // 2. Extract only the top features used during training
+             const inputFeatures = topFeatureIndices.map(index => fullEmbedding[index]);
+
+             if (inputFeatures.some(val => val === undefined || isNaN(val))) {
+                 throw new Error("Could not extract all required features from the embedding (undefined/NaN found).");
+             }
+             if (inputFeatures.length !== NUM_TOP_FEATURES) {
+                 throw new Error(`Extracted feature count (${inputFeatures.length}) doesn't match required (${NUM_TOP_FEATURES}).`);
+             }
+
+            // 3. Prepare tensor for TF.js model
+            const inputTensor = tf.tensor2d([inputFeatures], [1, NUM_TOP_FEATURES]); // Shape [1, 5]
+
+            // 4. Predict using the trained TF.js model
+            updateStatus('Predicting rating using the trained model...');
+            const predictionTensor = trainedModel.predict(inputTensor);
+            const predictionValue = predictionTensor.dataSync()[0]; // Get the single value (0-1)
+
+            // 5. Scale back to 0-100 and display
+            const predictedPercent = (predictionValue * 100).toFixed(1); // Scale and format
+            predictionResult.textContent = `Predicted Rating: ${predictedPercent}%`;
+            updateStatus('Prediction complete.');
+
+            // Clean up tensors
+            inputTensor.dispose();
+            predictionTensor.dispose();
+
+        } catch (error) {
+            console.error("Prediction Error:", error);
+            updateStatus(`Prediction failed: ${error.message}`, true);
+            predictionResult.textContent = 'Prediction: Error';
+        } finally {
+             checkPredictButtonState(); // Re-enable button if conditions met
+        }
+    }
+
+    // Initial check for predict button state
+    checkPredictButtonState();
+
+</script>
+
+</body>
+</html>

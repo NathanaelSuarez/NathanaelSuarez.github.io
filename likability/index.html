@@ -99,7 +99,7 @@
     <!-- Load TensorFlow.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <!-- Load Transformers.js (as module) -->
-    <script type="module" src="app.js"></script>
+    <!-- REMOVED: <script type="module" src="app.js"></script> -->
 
 </head>
 <body>
@@ -130,18 +130,17 @@
 </div>
 
 <script type="module">
-    // Import Transformers.js components (assuming app.js is the entry point)
+    // Import Transformers.js components
     import { AutoProcessor, AutoModel, env, RawImage, Tensor } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
 
     // --- Configuration ---
     const JSON_PATH = 'image_embeddings_rated.json'; // Assumed in same directory
-    // Note: Image directory path isn't directly used here, but assumes images were in 'Selfie/' relative to the original JSON generation context if filenames are relative.
     const DINO_MODEL_NAME = 'Xenova/dinov2-small';
-    const EXPECTED_DINO_DIM = 384;
+    const EXPECTED_DINO_DIM = 384; // Expected length of the embedding array
     const NUM_TOP_FEATURES = 5; // Use top 5 correlated features
-    const TF_EPOCHS = 50; // Adjust as needed
+    const TF_EPOCHS = 50;
     const TF_BATCH_SIZE = 8;
-    const TF_LEARNING_RATE = 0.01; // Adam optimizer default is often fine, but can tune
+    const TF_LEARNING_RATE = 0.01;
 
     // --- DOM Elements ---
     const loadTrainButton = document.getElementById('loadTrainButton');
@@ -161,11 +160,12 @@
     let dinoProcessor = null;
     let dinoModel = null;
     let isDinoModelReady = false;
-    let trainingData = null; // { filename: { embedding: [], selectionPercent: float, ... }, ... }
-    let trainedModel = null; // The TensorFlow.js model
-    let topFeatureIndices = []; // Indices of the 5 features used for training
+    let trainingData = null;
+    let trainedModel = null;
+    let topFeatureIndices = [];
     let capturedImageDataUrl = null;
     let isTraining = false;
+    let actualEmbeddingLength = -1; // To store the length found in the data
 
     // --- Helper Functions ---
     function updateStatus(message, isError = false) {
@@ -181,38 +181,33 @@
      function updateCorrelationInfo(indices, correlations) {
          let text = `Top ${NUM_TOP_FEATURES} Correlated Feature Indices (Absolute Correlation):\n`;
          indices.forEach((index, i) => {
-             text += `  ${i+1}. Index ${index} (Correlation: ${correlations[i].toFixed(4)})\n`;
+             // Check if correlation value exists before trying to format
+             const corrValue = (correlations && correlations[i] !== undefined) ? correlations[i].toFixed(4) : 'N/A';
+             text += `  ${i+1}. Index ${index} (Correlation: ${corrValue})\n`;
          });
          correlationInfo.textContent = text;
      }
-
 
     // --- DinoV2 Model Loading (for prediction) ---
     async function loadDinoModel() {
         updateStatus('Loading DinoV2 Processor & Model (for prediction)...');
         try {
-            // Configure Transformers.js environment
             env.allowLocalModels = false;
             env.backends.onnx.wasm.numThreads = Math.min(navigator.hardwareConcurrency || 1, 4);
             env.allowMissingFiles = true;
 
             dinoProcessor = await AutoProcessor.from_pretrained(DINO_MODEL_NAME);
-            dinoModel = await AutoModel.from_pretrained(DINO_MODEL_NAME, {
-                 quantized: true,
-                 // No progress callback here to keep it simpler, happens in background
-            });
+            dinoModel = await AutoModel.from_pretrained(DINO_MODEL_NAME, { quantized: true });
             isDinoModelReady = true;
             updateStatus('DinoV2 model ready for prediction.');
-             checkPredictButtonState(); // Check if predict can be enabled now
+             checkPredictButtonState();
         } catch (error) {
             console.error('Error loading DinoV2 model:', error);
             updateStatus(`Error loading DinoV2 model: ${error.message}. Prediction will fail.`, true);
             isDinoModelReady = false;
         }
     }
-    // Start loading DinoV2 immediately
     loadDinoModel();
-
 
     // --- Data Loading and Training ---
     loadTrainButton.addEventListener('click', handleLoadAndTrain);
@@ -223,61 +218,98 @@
         loadTrainButton.disabled = true;
         updateStatus('Loading training data...');
         updateTrainingStatus('Loading JSON...');
-        correlationInfo.textContent = 'Correlation Info: ---'; // Reset
-        webcamContainer.style.display = 'none'; // Hide webcam until trained
-        predictionContainer.style.display = 'none'; // Hide prediction until trained
+        correlationInfo.textContent = 'Correlation Info: ---';
+        webcamContainer.style.display = 'none';
+        predictionContainer.style.display = 'none';
+        actualEmbeddingLength = -1; // Reset actual length
 
         try {
             // 1. Fetch and Parse JSON
             const response = await fetch(JSON_PATH);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status} - Could not fetch ${JSON_PATH}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status} - Could not fetch ${JSON_PATH}`);
             trainingData = await response.json();
             updateStatus('JSON data loaded. Preparing data for training...');
 
             // 2. Prepare Data for TF.js
             const filenames = Object.keys(trainingData);
-            if (filenames.length === 0) {
-                throw new Error("JSON data is empty or invalid.");
-            }
+            if (filenames.length === 0) throw new Error("JSON data is empty or invalid.");
 
             let embeddings = [];
             let percentages = [];
-            let firstEmbeddingLength = -1;
 
             for (const filename of filenames) {
                 const item = trainingData[filename];
-                if (item && Array.isArray(item.embedding) && typeof item.selectionPercent === 'number' && !isNaN(item.selectionPercent)) {
-                    // Basic validation
-                     if(firstEmbeddingLength === -1) {
-                        firstEmbeddingLength = item.embedding.length;
-                        if(firstEmbeddingLength !== EXPECTED_DINO_DIM) {
-                             console.warn(`Warning: Embedding dimension (${firstEmbeddingLength}) doesn't match expected DinoV2-small dimension (${EXPECTED_DINO_DIM}).`);
-                             // Proceed anyway, but it might indicate an issue with the source JSON
-                        }
-                     } else if (item.embedding.length !== firstEmbeddingLength) {
-                         console.warn(`Skipping ${filename}: Inconsistent embedding length (${item.embedding.length} vs ${firstEmbeddingLength}).`);
-                         continue;
-                     }
 
-                    embeddings.push(item.embedding);
-                    // Scale percentage from 0-100 to 0-1 for logistic regression target
+                // --- *** MODIFIED VALIDATION & PARSING *** ---
+                // Check if embedding is a non-null object and selectionPercent is a valid number
+                if (item && typeof item.embedding === 'object' && item.embedding !== null && typeof item.selectionPercent === 'number' && !isNaN(item.selectionPercent)) {
+
+                    const embeddingObject = item.embedding;
+                    const embeddingArray = [];
+                    const keys = Object.keys(embeddingObject).map(Number).sort((a, b) => a - b);
+
+                    // Infer length from the object keys (assuming they are 0, 1, 2...)
+                    const inferredLength = keys.length > 0 ? keys[keys.length - 1] + 1 : 0;
+
+                    if (inferredLength === 0) {
+                        console.warn(`Skipping ${filename}: Embedding object seems empty or has non-numeric keys.`);
+                        continue;
+                    }
+
+                    // Convert object values to array, ensuring keys are sequential 0 to N-1
+                    let conversionOk = true;
+                    for (let i = 0; i < inferredLength; i++) {
+                        if (embeddingObject.hasOwnProperty(i)) {
+                            embeddingArray.push(embeddingObject[i]);
+                        } else {
+                            console.warn(`Skipping ${filename}: Missing key ${i} in embedding object (expected sequential keys).`);
+                            conversionOk = false;
+                            break;
+                        }
+                    }
+
+                    if (!conversionOk) continue; // Skip if keys weren't sequential
+
+                    // Check and set the embedding length consistency
+                    if (actualEmbeddingLength === -1) {
+                        actualEmbeddingLength = embeddingArray.length;
+                        if (actualEmbeddingLength !== EXPECTED_DINO_DIM) {
+                             console.warn(`Warning: Actual embedding dimension found (${actualEmbeddingLength}) doesn't match expected DinoV2-small dimension (${EXPECTED_DINO_DIM}). Using actual dimension.`);
+                        }
+                    } else if (embeddingArray.length !== actualEmbeddingLength) {
+                        console.warn(`Skipping ${filename}: Inconsistent embedding length (${embeddingArray.length} vs ${actualEmbeddingLength}).`);
+                        continue;
+                    }
+
+                    // Add the successfully converted array and scaled percentage
+                    embeddings.push(embeddingArray);
                     percentages.push(Math.min(1, Math.max(0, item.selectionPercent / 100.0)));
+
                 } else {
-                    console.warn(`Skipping invalid entry for ${filename}:`, item);
+                    // Log only if it's unexpected (e.g., missing keys)
+                     if (!item || typeof item.embedding !== 'object' || item.embedding == null) {
+                          console.warn(`Skipping invalid entry for ${filename}: Missing or invalid 'embedding' object. Data:`, item);
+                     } else if (typeof item.selectionPercent !== 'number' || isNaN(item.selectionPercent)) {
+                          console.warn(`Skipping invalid entry for ${filename}: Missing or invalid 'selectionPercent'. Data:`, item);
+                     }
+                     // Don't log every valid object that was just structured differently before parsing
                 }
+                 // --- *** END MODIFIED VALIDATION & PARSING *** ---
             }
 
-            if (embeddings.length < NUM_TOP_FEATURES + 1 || embeddings.length < 10) { // Need enough data and features
+
+            if (actualEmbeddingLength <= 0) {
+                 throw new Error("Could not determine a valid embedding length from the data.");
+            }
+            if (embeddings.length < Math.max(NUM_TOP_FEATURES + 1, 10)) { // Need enough data
                 throw new Error(`Insufficient valid data for training (need at least ${Math.max(NUM_TOP_FEATURES+1, 10)} samples with valid embeddings and selectionPercent). Found ${embeddings.length}.`);
             }
-             if(firstEmbeddingLength < NUM_TOP_FEATURES) {
-                  throw new Error(`Number of embedding features (${firstEmbeddingLength}) is less than the required top features (${NUM_TOP_FEATURES}).`);
+             if(actualEmbeddingLength < NUM_TOP_FEATURES) {
+                  throw new Error(`Number of embedding features (${actualEmbeddingLength}) is less than the required top features (${NUM_TOP_FEATURES}).`);
              }
 
             const numSamples = embeddings.length;
-            const numFeatures = embeddings[0].length;
+            const numFeatures = actualEmbeddingLength; // Use the determined length
             updateStatus(`Data prepared: ${numSamples} samples, ${numFeatures} features per sample.`);
 
             // Convert to Tensors
@@ -286,42 +318,53 @@
 
              // 3. Feature Selection based on Correlation
              updateTrainingStatus('Calculating feature correlations...');
-             await tf.nextFrame(); // Allow UI update
+             await tf.nextFrame();
 
              const correlations = [];
-             const yMean = yTensor.mean().dataSync()[0];
-             const yStdDev = tf.sqrt(yTensor.sub(yMean).square().mean()).dataSync()[0];
+             const yMeanTensor = yTensor.mean();
+             const yStdDevTensor = tf.sqrt(yTensor.sub(yMeanTensor).square().mean());
+             const yMean = yMeanTensor.dataSync()[0];
+             const yStdDev = yStdDevTensor.dataSync()[0];
+
+             yMeanTensor.dispose(); // Dispose intermediate tensors
+             yStdDevTensor.dispose();
 
              if (yStdDev === 0) {
-                throw new Error("Target variable (selectionPercent) has zero variance. Cannot calculate correlations.");
-             }
+                // Handle gracefully: If no variance, maybe default to first N features? Or error out.
+                console.warn("Target variable (selectionPercent) has zero variance. Correlation is undefined. Using first N features.");
+                topFeatureIndices = Array.from({ length: NUM_TOP_FEATURES }, (_, i) => i);
+                updateCorrelationInfo(topFeatureIndices, null); // Indicate correlation wasn't calculated
+             } else {
+                 // Calculate correlations only if variance exists
+                 for (let j = 0; j < numFeatures; j++) {
+                    await tf.tidy(() => { // Use tidy to manage memory for feature columns
+                        const featureCol = xTensor.slice([0, j], [numSamples, 1]).reshape([numSamples]);
+                        const xMean = featureCol.mean().dataSync()[0];
+                        const xStdDevTensor = tf.sqrt(featureCol.sub(xMean).square().mean());
+                        const xStdDev = xStdDevTensor.dataSync()[0];
 
-
-             for (let j = 0; j < numFeatures; j++) {
-                 const featureCol = xTensor.slice([0, j], [numSamples, 1]).reshape([numSamples]); // Get j-th column as 1D tensor
-                 const xMean = featureCol.mean().dataSync()[0];
-                 const xStdDev = tf.sqrt(featureCol.sub(xMean).square().mean()).dataSync()[0];
-
-                 let correlation = 0;
-                 if (xStdDev > 0) { // Avoid division by zero
-                     const covariance = featureCol.sub(xMean).mul(yTensor.sub(yMean)).mean().dataSync()[0];
-                     correlation = covariance / (xStdDev * yStdDev);
+                        let correlation = 0;
+                        if (xStdDev > 0) {
+                            const covariance = featureCol.sub(xMean).mul(yTensor.sub(yMean)).mean().dataSync()[0];
+                            correlation = covariance / (xStdDev * yStdDev);
+                        }
+                        correlations.push({ index: j, value: isNaN(correlation) ? 0 : correlation });
+                        // featureCol is disposed by tidy
+                        // xStdDevTensor is implicitly disposed by tidy
+                    });
+                    if (j % 50 === 0) await tf.nextFrame(); // Yield occasionally for large features
                  }
-                 correlations.push({ index: j, value: isNaN(correlation) ? 0 : correlation }); // Store index and correlation
+                 correlations.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+                 topFeatureIndices = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.index);
+                 const topCorrelations = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.value);
+                 updateCorrelationInfo(topFeatureIndices, topCorrelations);
              }
 
 
-             // Sort by absolute correlation value, descending
-             correlations.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-
-             // Get top N feature indices and their correlations
-             topFeatureIndices = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.index);
-             const topCorrelations = correlations.slice(0, NUM_TOP_FEATURES).map(c => c.value);
-             updateCorrelationInfo(topFeatureIndices, topCorrelations); // Display info
              updateStatus(`Identified top ${NUM_TOP_FEATURES} features. Preparing final training data.`);
 
              // Filter xTensor to keep only top features
-             const xTensorTopFeatures = xTensor.gather(topFeatureIndices, 1); // axis=1 for columns
+             const xTensorTopFeatures = xTensor.gather(topFeatureIndices, 1);
 
             // 4. Define and Train Logistic Regression Model
             updateTrainingStatus('Defining TF.js model...');
@@ -329,15 +372,15 @@
 
              trainedModel = tf.sequential();
              trainedModel.add(tf.layers.dense({
-                inputShape: [NUM_TOP_FEATURES], // Input is now only the top features
-                units: 1,                    // Single output neuron
-                activation: 'sigmoid'        // Sigmoid for 0-1 output
+                inputShape: [NUM_TOP_FEATURES],
+                units: 1,
+                activation: 'sigmoid'
              }));
 
             trainedModel.compile({
                  optimizer: tf.train.adam(TF_LEARNING_RATE),
-                 loss: tf.losses.binaryCrossentropy, // Appropriate for sigmoid output
-                 metrics: ['accuracy'] // Monitor accuracy (treat as binary classification for metric)
+                 loss: tf.losses.binaryCrossentropy,
+                 metrics: ['accuracy']
              });
 
             updateTrainingStatus(`Training model for ${TF_EPOCHS} epochs...`);
@@ -346,17 +389,16 @@
             const history = await trainedModel.fit(xTensorTopFeatures, yTensor, {
                 epochs: TF_EPOCHS,
                 batchSize: TF_BATCH_SIZE,
-                //validationSplit: 0.2, // Optional: Use part of data for validation
                 callbacks: {
-                    onEpochEnd: (epoch, logs) => {
+                    onEpochEnd: async (epoch, logs) => {
                          updateTrainingStatus(`Training... Epoch ${epoch + 1}/${TF_EPOCHS}, Loss: ${logs.loss.toFixed(4)}`);
-                        // Optional: Add accuracy log: , Acc: ${logs.acc?.toFixed(4)}`
                          console.log(`Epoch ${epoch + 1}`, logs);
+                         await tf.nextFrame(); // Prevent blocking UI during training loops
                     }
                 }
             });
 
-            // Clean up tensors no longer needed
+            // Clean up tensors
             xTensor.dispose();
             yTensor.dispose();
             xTensorTopFeatures.dispose();
@@ -366,16 +408,16 @@
             updateStatus('Model trained successfully. Ready for webcam capture.');
             webcamContainer.style.display = 'block';
             predictionContainer.style.display = 'block';
-            startWebcam(); // Automatically start webcam after training
+            startWebcam();
 
         } catch (error) {
             console.error("Error during loading or training:", error);
             updateStatus(`Error: ${error.message}`, true);
             updateTrainingStatus('Failed.');
-            trainedModel = null; // Ensure model is null on error
+            trainedModel = null;
         } finally {
             isTraining = false;
-            loadTrainButton.disabled = false; // Re-enable button
+            loadTrainButton.disabled = false;
         }
     }
 
@@ -388,12 +430,11 @@
             return;
         }
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); // Prefer front camera
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
             webcamVideo.srcObject = stream;
             webcamVideo.onloadedmetadata = () => {
                 captureButton.disabled = false;
                  updateStatus('Webcam started. Position yourself and capture.');
-                 // Set canvas dimensions once video is loaded
                  captureCanvas.width = webcamVideo.videoWidth;
                  captureCanvas.height = webcamVideo.videoHeight;
             };
@@ -405,10 +446,10 @@
     }
 
     captureButton.addEventListener('click', () => {
-         if (webcamVideo.srcObject && webcamVideo.readyState >= 3) { // Check if video is ready
+         if (webcamVideo.srcObject && webcamVideo.readyState >= 3) {
              const context = captureCanvas.getContext('2d');
              context.drawImage(webcamVideo, 0, 0, captureCanvas.width, captureCanvas.height);
-             capturedImageDataUrl = captureCanvas.toDataURL('image/jpeg'); // Or 'image/png'
+             capturedImageDataUrl = captureCanvas.toDataURL('image/jpeg');
              capturedImagePreview.src = capturedImageDataUrl;
              capturedImagePreview.style.display = 'block';
              updateStatus('Image captured. Ready to predict.');
@@ -422,38 +463,40 @@
     predictButton.addEventListener('click', predictWebcamImage);
 
     function checkPredictButtonState() {
-        // Enable prediction only if Dino model is ready, TF model is trained, and an image is captured
         predictButton.disabled = !(isDinoModelReady && trainedModel && capturedImageDataUrl);
     }
 
     async function getDinoEmbedding(imageDataUrl) {
-        if (!isDinoModelReady || !dinoProcessor || !dinoModel) {
-            throw new Error("DinoV2 model/processor not ready.");
-        }
+        if (!isDinoModelReady || !dinoProcessor || !dinoModel) throw new Error("DinoV2 model/processor not ready.");
+
+        let embeddingArray = null;
         try {
-            const image = await RawImage.fromURL(imageDataUrl);
-            const inputs = await dinoProcessor(image);
-            const output = await dinoModel(inputs);
+            await tf.tidy(async () => { // Use tidy for transformers.js tensors too
+                const image = await RawImage.fromURL(imageDataUrl);
+                const inputs = await dinoProcessor(image);
+                const output = await dinoModel(inputs);
 
-            if (!output || !output.last_hidden_state) {
-                 throw new Error("Failed to get 'last_hidden_state' from DinoV2 model output.");
-            }
-            const lastHiddenState = output.last_hidden_state;
-            if (!(lastHiddenState instanceof Tensor) || lastHiddenState.dims.length !== 3 || lastHiddenState.dims[0] !== 1) {
-                 throw new Error("Invalid 'last_hidden_state' format from DinoV2.");
-            }
-            const hidden_dim = lastHiddenState.dims[2];
-            const tensorData = lastHiddenState.data; // Float32Array
-            const clsEmbeddingData = tensorData.slice(0, hidden_dim);
+                if (!output || !output.last_hidden_state) throw new Error("Failed to get 'last_hidden_state' from DinoV2 model output.");
 
-            if (clsEmbeddingData.length !== hidden_dim) {
-                 throw new Error("Failed to extract correct CLS embedding slice from DinoV2 data.");
-            }
-            return clsEmbeddingData; // Return Float32Array
+                const lastHiddenState = output.last_hidden_state; // This is a Transformers.js Tensor
 
+                if (lastHiddenState.dims.length !== 3 || lastHiddenState.dims[0] !== 1) throw new Error("Invalid 'last_hidden_state' format from DinoV2.");
+
+                const hidden_dim = lastHiddenState.dims[2];
+                const tensorData = await lastHiddenState.data; // Get the Float32Array data
+
+                // Slice directly from the Float32Array
+                const clsEmbeddingData = tensorData.slice(0, hidden_dim);
+
+                if (clsEmbeddingData.length !== hidden_dim) throw new Error("Failed to extract correct CLS embedding slice from DinoV2 data.");
+
+                embeddingArray = Array.from(clsEmbeddingData); // Convert Float32Array to regular array for consistency if needed, though Float32Array is fine too.
+                // lastHiddenState tensor will be disposed by tidy
+            });
+            return embeddingArray; // Return the regular array or Float32Array slice
         } catch (error) {
             console.error("Error getting DinoV2 embedding:", error);
-            throw error; // Re-throw
+            throw error;
         }
     }
 
@@ -463,7 +506,7 @@
             updateStatus("Cannot predict: Model not trained, image not captured, or DinoV2 not ready.", true);
             return;
         }
-        if (topFeatureIndices.length !== NUM_TOP_FEATURES) {
+        if (!topFeatureIndices || topFeatureIndices.length !== NUM_TOP_FEATURES) {
              updateStatus("Cannot predict: Top feature indices not determined correctly.", true);
             return;
         }
@@ -474,28 +517,35 @@
 
         try {
             // 1. Get DinoV2 embedding for the captured image
-            const fullEmbedding = await getDinoEmbedding(capturedImageDataUrl); // Get Float32Array
+            const fullEmbedding = await getDinoEmbedding(capturedImageDataUrl); // Returns Float32Array or Array
+
+            if (!fullEmbedding || fullEmbedding.length !== actualEmbeddingLength) {
+                 throw new Error(`Failed to get valid full embedding or length mismatch (${fullEmbedding?.length} vs ${actualEmbeddingLength}).`);
+            }
 
              // 2. Extract only the top features used during training
-             const inputFeatures = topFeatureIndices.map(index => fullEmbedding[index]);
+             const inputFeatures = topFeatureIndices.map(index => {
+                 if (index >= fullEmbedding.length || index < 0) {
+                     throw new Error(`Invalid feature index ${index} for embedding length ${fullEmbedding.length}.`);
+                 }
+                 return fullEmbedding[index];
+             });
+
 
              if (inputFeatures.some(val => val === undefined || isNaN(val))) {
                  throw new Error("Could not extract all required features from the embedding (undefined/NaN found).");
              }
-             if (inputFeatures.length !== NUM_TOP_FEATURES) {
-                 throw new Error(`Extracted feature count (${inputFeatures.length}) doesn't match required (${NUM_TOP_FEATURES}).`);
-             }
 
             // 3. Prepare tensor for TF.js model
-            const inputTensor = tf.tensor2d([inputFeatures], [1, NUM_TOP_FEATURES]); // Shape [1, 5]
+            const inputTensor = tf.tensor2d([inputFeatures], [1, NUM_TOP_FEATURES]);
 
             // 4. Predict using the trained TF.js model
             updateStatus('Predicting rating using the trained model...');
             const predictionTensor = trainedModel.predict(inputTensor);
-            const predictionValue = predictionTensor.dataSync()[0]; // Get the single value (0-1)
+            const predictionValue = predictionTensor.dataSync()[0];
 
             // 5. Scale back to 0-100 and display
-            const predictedPercent = (predictionValue * 100).toFixed(1); // Scale and format
+            const predictedPercent = (predictionValue * 100).toFixed(1);
             predictionResult.textContent = `Predicted Rating: ${predictedPercent}%`;
             updateStatus('Prediction complete.');
 
@@ -508,11 +558,10 @@
             updateStatus(`Prediction failed: ${error.message}`, true);
             predictionResult.textContent = 'Prediction: Error';
         } finally {
-             checkPredictButtonState(); // Re-enable button if conditions met
+             checkPredictButtonState();
         }
     }
 
-    // Initial check for predict button state
     checkPredictButtonState();
 
 </script>

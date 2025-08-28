@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Flexible Food Macro & Expiration Planner</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale-1">
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 18px; color: #222; }
     h1 { margin-top: 0; font-size: 20px; }
@@ -85,16 +85,21 @@
         <button id="parseBtn">Use this JSON</button>
         <button id="planBtn">Create Plan</button>
         <button id="downloadPlanBtn" class="secondary">Download plan JSON</button>
+        <button id="clearDataBtn" class="secondary" title="Clear all saved inputs and plan results from your browser and reload.">Clear & Reload</button>
       </div>
       
-      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
         <div>
           <label>Today's date</label>
           <input id="startDate" type="date" value="2025-08-17">
         </div>
         <div>
-          <label>Number of weeks to plan</label>
+          <label>Weeks to plan</label>
           <input id="numWeeks" type="number" value="2" min="1" max="52">
+        </div>
+        <div>
+          <label>Optimization Steps</label>
+          <input id="numGenerations" type="number" value="100" min="10" max="500">
         </div>
       </div>
       
@@ -135,11 +140,41 @@
         <h3 style="margin:6px 0">Unscheduled Servings Analysis</h3>
         <div id="wasteList" class="small"></div>
       </div>
+      <div style="margin-top:10px;">
+        <h3 style="margin:6px 0">Shopping List (to repeat this plan)</h3>
+        <div id="shoppingListContainer" class="small"></div>
+      </div>
     </div>
   </div>
 
 <script>
 (function(){
+  // --- START: PERSISTENCE SETUP ---
+  const LS_KEY_JSON = 'foodPlanner_jsonText';
+  const LS_KEY_CONFIG = 'foodPlanner_config';
+  const LS_KEY_PLAN_DATA = 'foodPlanner_planData';
+
+  const configInputIds = [
+      "startDate", "numWeeks", "numGenerations", "calMin", "calMax",
+      "carbMin", "carbMax", "sugarMin", "sugarMax", "proteinMin",
+      "proteinMax", "satMin", "satMax", "sodiumMin", "sodiumMax"
+  ];
+
+  function stringifyForStorage(data) {
+    return JSON.stringify(data, (key, value) => value === Infinity ? "Infinity" : value);
+  }
+
+  function parseFromStorage(str) {
+      if (!str) return null;
+      try {
+          return JSON.parse(str, (key, value) => value === "Infinity" ? Infinity : value);
+      } catch (e) {
+          console.error("Failed to parse from localStorage", e);
+          return null;
+      }
+  }
+  // --- END: PERSISTENCE SETUP ---
+
   const MS_DAY = 24*60*60*1000;
   const macros = ["calories","carbs","sugar","protein","saturatedFat","sodium"];
   const macroLabels = {
@@ -189,9 +224,12 @@
   const planSummary = document.getElementById("planSummary");
   const startDateInput = document.getElementById("startDate");
   const numWeeksInput = document.getElementById("numWeeks");
+  const numGenerationsInput = document.getElementById("numGenerations");
   const fileInput = document.getElementById("fileInput");
   const warningsDiv = document.getElementById("warnings");
   const downloadPlanBtn = document.getElementById("downloadPlanBtn");
+  const clearDataBtn = document.getElementById("clearDataBtn");
+  const shoppingListContainer = document.getElementById("shoppingListContainer");
 
   function getMacroInputs() {
     return {
@@ -235,7 +273,7 @@
 
   // --- START: GENETIC ALGORITHM ---
   const GA_CONFIG = {
-      POPULATION_SIZE: 50, GENERATIONS: 100, MUTATION_RATE: 0.05,
+      POPULATION_SIZE: 50, MUTATION_RATE: 0.05,
       TOURNAMENT_SIZE: 5, ELITISM_COUNT: 2,
   };
 
@@ -329,13 +367,13 @@
       return individual;
   }
   
-  async function runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays) {
+  async function runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays, numGenerations) {
       planBtn.disabled = true;
       planBtn.textContent = "Initializing population...";
       let population = Array.from({length: GA_CONFIG.POPULATION_SIZE}, () => ({ individual: createRandomIndividual(units, startDate, totalDays), fitness: 0 }));
       let bestIndividualOverall = null;
-      for (let gen = 0; gen < GA_CONFIG.GENERATIONS; gen++) {
-          planBtn.textContent = `Optimizing... (Gen ${gen + 1}/${GA_CONFIG.GENERATIONS})`;
+      for (let gen = 0; gen < numGenerations; gen++) {
+          planBtn.textContent = `Optimizing... (Gen ${gen + 1}/${numGenerations})`;
           await new Promise(resolve => setTimeout(resolve, 0));
           for (const p of population) p.fitness = calculateFitness(p.individual, units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays);
           population.sort((a, b) => b.fitness - a.fitness);
@@ -364,6 +402,7 @@
     const items = normalizeItems(parsed);
     const startDate = parseDateString(startDateInput.value);
     const numWeeks = parseInt(numWeeksInput.value, 10);
+    const numGenerations = parseInt(numGenerationsInput.value, 10) || 100;
     if (!startDate || !numWeeks || numWeeks < 1) { alert("Invalid start date or number of weeks."); return; }
     startDate.setHours(0,0,0,0);
     const totalDays = numWeeks * 7;
@@ -399,10 +438,11 @@
         weeksContainer.innerHTML = "<div class='small'>Nothing to schedule. All items may have expired before the plan start date.</div>";
         itemsTableContainer.innerHTML = "";
         wasteList.innerHTML = "";
+        shoppingListContainer.innerHTML = "";
         return;
     }
 
-    const bestPlanChromosome = await runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays);
+    const bestPlanChromosome = await runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays, numGenerations);
     
     const weeks = Array.from({length:numWeeks}, () => ({ totals: Object.fromEntries(macros.map(m => [m,0])) }));
     const days = Array.from({length:totalDays}, ()=>[]);
@@ -467,6 +507,30 @@
 
     renderResults({startDate, perDay, weeks, days, itemSummaries, totalWastedInPlan, totalAtRisk, items, numWeeks});
   });
+
+  function generateAndRenderShoppingList(itemSummaries) {
+    const shoppingList = [];
+    itemSummaries.forEach(item => {
+        const servingsConsumed = item.perWeek.reduce((sum, count) => sum + count, 0);
+        if (servingsConsumed === 0) return; // Don't add items not used in the plan
+
+        const servingsRemaining = item.initialServings - servingsConsumed;
+        const servingsToBuy = servingsConsumed - servingsRemaining;
+
+        if (servingsToBuy > 0) {
+            shoppingList.push({ name: item.name, toBuy: servingsToBuy });
+        }
+    });
+
+    if (shoppingList.length === 0) {
+        shoppingListContainer.innerHTML = 'You have enough of everything to repeat this plan. No shopping needed!';
+    } else {
+        const table = `<table><thead><tr><th>Item</th><th>Servings to Buy</th></tr></thead><tbody>
+            ${shoppingList.map(item => `<tr><td>${item.name}</td><td>${item.toBuy}</td></tr>`).join('')}
+        </tbody></table>`;
+        shoppingListContainer.innerHTML = table;
+    }
+  }
 
   function renderResults({startDate, perDay, weeks, days, itemSummaries, totalWastedInPlan, totalAtRisk, items, numWeeks}) {
     weeksContainer.innerHTML = "";
@@ -552,6 +616,17 @@
         items: items.map((it, idx) => ({ ...it, ...itemSummaries[idx], expiration: isoDateLocal(it.expiration) })),
         weeks: weeks.map((w, idx) => ({ week: idx+1, totals: w.totals }))
     };
+
+    // --- START: PERSISTENCE ---
+    const planDataToSave = {
+        startDate: isoDateLocal(startDate), perDay, weeks, days, itemSummaries,
+        totalWastedInPlan, totalAtRisk, numWeeks,
+        items: items.map(it => ({...it, raw: undefined, expiration: isoDateLocal(it.expiration)}))
+    };
+    localStorage.setItem(LS_KEY_PLAN_DATA, stringifyForStorage(planDataToSave));
+    // --- END: PERSISTENCE ---
+    
+    generateAndRenderShoppingList(itemSummaries);
     window.scrollTo({ top: 200, behavior: 'smooth' });
   }
 
@@ -564,6 +639,70 @@
     a.download = `food_plan_${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
+
+  // --- START: PERSISTENCE LOGIC ---
+  function saveJsonText() {
+    localStorage.setItem(LS_KEY_JSON, jsonText.value);
+  }
+
+  function saveConfig() {
+      const config = {};
+      configInputIds.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) config[id] = el.value;
+      });
+      localStorage.setItem(LS_KEY_CONFIG, JSON.stringify(config));
+  }
+
+  function loadFromLocalStorage() {
+      // Load JSON text
+      const savedJson = localStorage.getItem(LS_KEY_JSON);
+      if (savedJson) jsonText.value = savedJson;
+
+      // Load config
+      const savedConfigStr = localStorage.getItem(LS_KEY_CONFIG);
+      if (savedConfigStr) {
+          try {
+              const savedConfig = JSON.parse(savedConfigStr);
+              configInputIds.forEach(id => {
+                  const el = document.getElementById(id);
+                  if (el && savedConfig[id] !== undefined) el.value = savedConfig[id];
+              });
+          } catch(e) { console.error("Could not load config", e); }
+      }
+
+      // Load and render last plan
+      const savedPlanDataStr = localStorage.getItem(LS_KEY_PLAN_DATA);
+      if (savedPlanDataStr) {
+          const planData = parseFromStorage(savedPlanDataStr);
+          if (planData) {
+              planData.startDate = parseDateString(planData.startDate);
+              if (planData.items && Array.isArray(planData.items)) {
+                planData.items.forEach(item => { item.expiration = parseDateString(item.expiration); });
+              }
+              renderResults(planData);
+          }
+      }
+  }
+
+  jsonText.addEventListener('input', saveJsonText);
+  configInputIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', saveConfig);
+  });
+
+  clearDataBtn.addEventListener('click', () => {
+      if (confirm("Are you sure you want to clear all saved data? This will reload the page.")) {
+          localStorage.removeItem(LS_KEY_JSON);
+          localStorage.removeItem(LS_KEY_CONFIG);
+          localStorage.removeItem(LS_KEY_PLAN_DATA);
+          location.reload();
+      }
+  });
+
+  loadFromLocalStorage();
+  // --- END: PERSISTENCE LOGIC ---
+
 })();
 </script>
 </body>

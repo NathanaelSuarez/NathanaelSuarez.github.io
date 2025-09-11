@@ -1,709 +1,158 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Flexible Food Macro & Expiration Planner</title>
-  <meta name="viewport" content="width=device-width,initial-scale-1">
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 18px; color: #222; }
-    h1 { margin-top: 0; font-size: 20px; }
-    .flex { display: flex; gap: 18px; align-items: flex-start; }
-    .col { background: #fafafa; border: 1px solid #eee; padding: 12px; border-radius: 8px; box-shadow: 0 1px 0 rgba(0,0,0,0.02); }
-    .left { width: 420px; }
-    textarea { width: 100%; height: 220px; font-family: monospace; font-size: 13px; padding: 8px; box-sizing: border-box; }
-    label { display: block; margin-top: 8px; font-weight: 600; font-size: 13px; }
-    .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
-    input[type="number"], input[type="date"], input[type="file"], select { padding:6px 8px; border:1px solid #dcdcdc; border-radius:6px; }
-    button { background:#1976d2; color:#fff; border:0; padding:8px 12px; border-radius:6px; cursor:pointer; }
-    button:disabled { background: #6c757d; cursor: not-allowed; }
-    button.secondary { background:#eee; color:#111; }
-    .weeks { display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-top:12px; }
-    .week-card { padding:10px; border-radius:8px; background:#fff; border:1px solid #eee; }
-    .macro-row { display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-top:6px; padding:6px 4px; }
-    .ok { color:green; font-weight:700; }
-    .bad { color:#c62828; font-weight:700; }
-    table { width:100%; border-collapse:collapse; font-size:13px; margin-top: 4px; }
-    th, td { text-align:left; padding:6px 8px; border-bottom: 1px solid #f0f0f0; }
-    .small { font-size:12px; color:#666; }
-    .badge { background:#eef6ff; color:#08529a; padding:4px 8px; border-radius:999px; font-weight:600; font-size:12px; }
-    .summary { margin-top:10px; }
-    .danger { color:#b80f0f; font-weight:700; }
-    .warning { color:#e65100; font-weight:700; }
-    .good { color:#0a7a0a; font-weight:700; }
-    .item-grid { display:grid; grid-template-columns: 1fr auto; gap:6px; align-items:center; }
-    .download { margin-left:8px; }
-  </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Meal Planner</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Flexible Food Macro & Expiration Planner</h1>
-  <div class="flex">
-    <div class="col left">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <label style="margin:0">Upload JSON file</label>
-          <input id="fileInput" type="file" accept=".json">
-        </div>
-        <div style="text-align:right">
-          <button id="loadSampleBtn" class="secondary">Load sample JSON</button>
-        </div>
-      </div>
 
-      <label>Or edit / paste JSON (array of objects)</label>
-      <textarea id="jsonText" spellcheck="false">
-[
-  {"name": "Brown Peanut Butter (Jif)", "servings": 34, "calories": 190, "protein": 7, "carbs": 8, "sugar": 4, "saturatedFat": 3.5, "sodium": 80, "expiration": "2026-06-01"},
-  {"name": "Grape Jelly (Welch's)", "servings": 84, "calories": 30, "protein": 0, "carbs": 8, "sugar": 8, "saturatedFat": 0, "sodium": 0, "expiration": "2026-06-09"},
-  {"name": "Green Peanut Butter (Great Value)", "servings": 35, "calories": 190, "protein": 7, "carbs": 8, "sugar": 3, "saturatedFat": 3, "sodium": 120, "expiration": "2026-05-28"},
-  {"name": "Tortillas (Olé)", "servings": 15, "calories": 80, "protein": 2, "carbs": 17, "sugar": 0, "saturatedFat": 0, "sodium": 5, "expiration": "2025-09-23"},
-  {"name": "White Tortillas (Olé)", "servings": 15, "calories": 80, "protein": 2, "carbs": 17, "sugar": 0, "saturatedFat": 0, "sodium": 5, "expiration": "2025-09-11"},
-  {"name": "Chocolate Granola Bar", "servings": 15, "calories": 160, "protein": 3, "carbs": 21, "sugar": 9, "saturatedFat": 3, "sodium": 120, "expiration": "2026-03-23"},
-  {"name": "Deluxe Cashews", "servings": 30, "calories": 160, "protein": 5, "carbs": 9, "sugar": 1, "saturatedFat": 2.5, "sodium": 90, "expiration": "2026-09-30"},
-  {"name": "Mixed Nuts", "servings": 27, "calories": 170, "protein": 6, "carbs": 5, "sugar": 1, "saturatedFat": 2, "sodium": 85, "expiration": "2026-12-01"},
-  {"name": "Peanuts", "servings": 12, "calories": 170, "protein": 7, "carbs": 5, "sugar": 1, "saturatedFat": 2, "sodium": 180, "expiration": "2025-12-13"},
-  {"name": "Chocolate Rice Cakes", "servings": 28, "calories": 60, "protein": 1, "carbs": 12, "sugar": 4, "saturatedFat": 0, "sodium": 40, "expiration": "2026-01-25"},
-  {"name": "Little Bites Muffins", "servings": 10, "calories": 190, "protein": 2, "carbs": 27, "sugar": 17, "saturatedFat": 1.5, "sodium": 170, "expiration": "2025-08-24"},
-  {"name": "GoGo Squeez (Apple)", "servings": 20, "calories": 60, "protein": 0, "carbs": 15, "sugar": 12, "saturatedFat": 0, "sodium": 0, "expiration": "2026-04-28"},
-  {"name": "Veggie Straws", "servings": 14, "calories": 130, "protein": 1, "carbs": 17, "sugar": 1, "saturatedFat": 1, "sodium": 280, "expiration": "2025-10-13"},
-  {"name": "Dave's Killer Bread", "servings": 21, "calories": 60, "protein": 3, "carbs": 14, "sugar": 3, "saturatedFat": 0, "sodium": 105, "expiration": "2025-08-25"},
-  {"name": "Arnold Bread", "servings": 16, "calories": 110, "protein": 4, "carbs": 21, "sugar": 3, "saturatedFat": 0, "sodium": 160, "expiration": "2025-08-27"},
-  {"name": "Rice Krispies Treat", "servings": 60, "calories": 90, "protein": 1, "carbs": 17, "sugar": 8, "saturatedFat": 0.5, "sodium": 105, "expiration": "2026-04-30"},
-  {"name": "Kind Bar (Dark Choc & Sea Salt)", "servings": 9, "calories": 190, "protein": 5, "carbs": 16, "sugar": 5, "saturatedFat": 3, "sodium": 140, "expiration": "2026-03-07"},
-  {"name": "Kind Bar (Peanut Butter Dark Choc)", "servings": 9, "calories": 200, "protein": 7, "carbs": 17, "sugar": 9, "saturatedFat": 4, "sodium": 20, "expiration": "2026-03-07"},
-  {"name": "Gummies (Fruit Snacks)", "servings": 65, "calories": 70, "protein": 1, "carbs": 17, "sugar": 11, "saturatedFat": 0, "sodium": 0, "expiration": "2026-05-17"},
-  {"name": "Fruit Rope", "servings": 14, "calories": 60, "protein": 0, "carbs": 15, "sugar": 12, "saturatedFat": 0, "sodium": 0, "expiration": "2026-07-30"},
-  {"name": "Bananas", "servings": 5, "calories": 105, "protein": 1.3, "carbs": 27, "sugar": 14, "saturatedFat": 0.1, "sodium": 1, "expiration": "2025-08-20"},
-  {"name": "Raspberries", "servings": 3, "calories": 64, "protein": 1.5, "carbs": 15, "sugar": 5.4, "saturatedFat": 0.1, "sodium": 1, "expiration": "2025-08-20"},
-  {"name": "Strawberries", "servings": 4, "calories": 49, "protein": 1, "carbs": 12, "sugar": 7.4, "saturatedFat": 0, "sodium": 2, "expiration": "2025-08-20"},
-  {"name": "Blueberries", "servings": 2, "calories": 84, "protein": 1.1, "carbs": 21, "sugar": 15, "saturatedFat": 0.1, "sodium": 2, "expiration": "2025-08-20"},
-  {"name": "Strawberry Cream Cheese", "servings": 15, "calories": 60, "protein": 1, "carbs": 4, "sugar": 4, "saturatedFat": 2.5, "sodium": 65, "expiration": "2025-11-13"},
-  {"name": "Silk Soymilk", "servings": 16, "calories": 110, "protein": 8, "carbs": 9, "sugar": 6, "saturatedFat": 0.5, "sodium": 90, "expiration": "2025-10-25"},
-  {"name": "Grapes", "servings": 3, "calories": 104, "protein": 1.1, "carbs": 27, "sugar": 23, "saturatedFat": 0.2, "sodium": 3, "expiration": "2025-08-20"}
-]
-      </textarea>
+    <header class="main-header">
+        <h1>Dynamic Meal Planner</h1>
+        <nav class="tab-navigation">
+            <button id="tab-btn-inventory" class="tab-link active" onclick="window.app.showTab('inventory')">1. Inventory</button>
+            <button id="tab-btn-planner" class="tab-link" onclick="window.app.showTab('planner')">2. Create & View Plan</button>
+        </nav>
+    </header>
 
-      <div style="margin-top:8px; display:flex; gap:8px;">
-        <button id="parseBtn">Use this JSON</button>
-        <button id="planBtn">Create Plan</button>
-        <button id="downloadPlanBtn" class="secondary">Download plan JSON</button>
-        <button id="clearDataBtn" class="secondary" title="Clear all saved inputs and plan results from your browser and reload.">Clear & Reload</button>
-      </div>
-      
-      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
-        <div>
-          <label>Today's date</label>
-          <input id="startDate" type="date" value="2025-08-17">
-        </div>
-        <div>
-          <label>Weeks to plan</label>
-          <input id="numWeeks" type="number" value="2" min="1" max="52">
-        </div>
-        <div>
-          <label>Optimization Steps</label>
-          <input id="numGenerations" type="number" value="100" min="10" max="500">
-        </div>
-      </div>
-      
-      <div style="margin-top:12px;">
-        <label>Weekly daily-average macro ranges (per day).</label>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
-          <div><label class="small">Calories (min)</label><input id="calMin" type="number" value="1800"></div>
-          <div><label class="small">Calories (max)</label><input id="calMax" type="number" value="2200"></div>
-          <div><label class="small">Carbs (g) min</label><input id="carbMin" type="number" value="50"></div>
-          <div><label class="small">Carbs (g) max</label><input id="carbMax" type="number" value="400"></div>
-          <div><label class="small">Sugar (g) min</label><input id="sugarMin" type="number" value="0"></div>
-          <div><label class="small">Sugar (g) max</label><input id="sugarMax" type="number" value="100"></div>
-          <div><label class="small">Protein (g) min</label><input id="proteinMin" type="number" value="50"></div>
-          <div><label class="small">Protein (g) max</label><input id="proteinMax" type="number" value="200"></div>
-          <div><label class="small">Sat. fat (g) min</label><input id="satMin" type="number" value="0"></div>
-          <div><label class="small">Sat. fat (g) max</label><input id="satMax" type="number" value="14"></div>
-          <div><label class="small">Sodium (mg) min</label><input id="sodiumMin" type="number" value="0"></div>
-          <div><label class="small">Sodium (mg) max</label><input id="sodiumMax" type="number" value="1600"></div>
-        </div>
-      </div>
-      <div class="summary" id="warnings"></div>
-    </div>
-
-    <div class="col" style="flex:1;">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div><strong>Plan results</strong></div>
-        <div class="item-grid">
-          <div id="planSummary" class="small">No plan yet</div>
-        </div>
-      </div>
-
-      <div id="weeksContainer" class="weeks" style="margin-top:10px;"></div>
-      <div style="margin-top:12px;">
-        <h3 style="margin:6px 0">Per-item summary</h3>
-        <div id="itemsTableContainer"></div>
-      </div>
-      <div style="margin-top:10px;">
-        <h3 style="margin:6px 0">Unscheduled Servings Analysis</h3>
-        <div id="wasteList" class="small"></div>
-      </div>
-      <div style="margin-top:10px;">
-        <h3 style="margin:6px 0">Shopping List (to repeat this plan)</h3>
-        <div id="shoppingListContainer" class="small"></div>
-      </div>
-    </div>
-  </div>
-
-<script>
-(function(){
-  // --- START: PERSISTENCE SETUP ---
-  const LS_KEY_JSON = 'foodPlanner_jsonText';
-  const LS_KEY_CONFIG = 'foodPlanner_config';
-  const LS_KEY_PLAN_DATA = 'foodPlanner_planData';
-
-  const configInputIds = [
-      "startDate", "numWeeks", "numGenerations", "calMin", "calMax",
-      "carbMin", "carbMax", "sugarMin", "sugarMax", "proteinMin",
-      "proteinMax", "satMin", "satMax", "sodiumMin", "sodiumMax"
-  ];
-
-  function stringifyForStorage(data) {
-    return JSON.stringify(data, (key, value) => value === Infinity ? "Infinity" : value);
-  }
-
-  function parseFromStorage(str) {
-      if (!str) return null;
-      try {
-          return JSON.parse(str, (key, value) => value === "Infinity" ? Infinity : value);
-      } catch (e) {
-          console.error("Failed to parse from localStorage", e);
-          return null;
-      }
-  }
-  // --- END: PERSISTENCE SETUP ---
-
-  const MS_DAY = 24*60*60*1000;
-  const macros = ["calories","carbs","sugar","protein","saturatedFat","sodium"];
-  const macroLabels = {
-    calories: "Calories (kcal)", carbs: "Carbs (g)", sugar: "Sugar (g)",
-    protein: "Protein (g)", saturatedFat: "Sat. fat (g)", sodium: "Sodium (mg)"
-  };
-
-  function isoDateLocal(d) {
-    if (!d || isNaN(d)) return 'N/A';
-    const y = d.getFullYear(), m = (d.getMonth()+1).toString().padStart(2,'0'), day = d.getDate().toString().padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  }
-  function parseDateString(s) {
-    if (!s) return null;
-    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12);
-    const d = new Date(s);
-    if (isNaN(d)) return null;
-    d.setHours(12,0,0,0);
-    return d;
-  }
-
-  function sampleJSON() {
-    const today = new Date();
-    function offset(days) {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days);
-      return isoDateLocal(d);
-    }
-    const sample = [
-      {"name":"Protein Bar","servings":10,"calories":250,"sodium":200,"saturatedFat":3,"carbs":31,"sugar":10,"protein":20,"expiration": offset(10)},
-      {"name":"Yogurt Cup","servings":8,"calories":150,"sodium":60,"saturatedFat":1.5,"carbs":18,"sugar":14,"protein":5,"expiration": offset(5)},
-      {"name":"Chicken Breast (pack)","servings":6,"calories":200,"sodium":400,"saturatedFat":2,"carbs":0,"sugar":0,"protein":35,"expiration": offset(12)},
-      {"name":"Canned Beans (expires later)","servings":12,"calories":110,"sodium":330,"saturatedFat":0.1,"carbs":20,"sugar":1.5,"protein":7,"expiration": offset(120)},
-      {"name":"Apple","servings":14,"calories":95,"sodium":2,"saturatedFat":0.1,"carbs":25,"sugar":19,"protein":0.5,"expiration": offset(21)},
-      {"name":"Crackers (large box)","servings":50,"calories":70,"sodium":120,"saturatedFat":0.5,"carbs":11,"sugar":1,"protein":1,"expiration": offset(90)}
-    ];
-    return JSON.stringify(sample, null, 2);
-  }
-
-  const jsonText = document.getElementById("jsonText");
-  const loadSampleBtn = document.getElementById("loadSampleBtn");
-  const parseBtn = document.getElementById("parseBtn");
-  const planBtn = document.getElementById("planBtn");
-  const weeksContainer = document.getElementById("weeksContainer");
-  const itemsTableContainer = document.getElementById("itemsTableContainer");
-  const wasteList = document.getElementById("wasteList");
-  const planSummary = document.getElementById("planSummary");
-  const startDateInput = document.getElementById("startDate");
-  const numWeeksInput = document.getElementById("numWeeks");
-  const numGenerationsInput = document.getElementById("numGenerations");
-  const fileInput = document.getElementById("fileInput");
-  const warningsDiv = document.getElementById("warnings");
-  const downloadPlanBtn = document.getElementById("downloadPlanBtn");
-  const clearDataBtn = document.getElementById("clearDataBtn");
-  const shoppingListContainer = document.getElementById("shoppingListContainer");
-
-  function getMacroInputs() {
-    return {
-      calories: { min: Number(document.getElementById("calMin").value || 0), max: Number(document.getElementById("calMax").value || 0) },
-      carbs: { min: Number(document.getElementById("carbMin").value || 0), max: Number(document.getElementById("carbMax").value || 0) },
-      sugar: { min: Number(document.getElementById("sugarMin").value || 0), max: Number(document.getElementById("sugarMax").value || 0) },
-      protein: { min: Number(document.getElementById("proteinMin").value || 0), max: Number(document.getElementById("proteinMax").value || 0) },
-      saturatedFat: { min: Number(document.getElementById("satMin").value || 0), max: Number(document.getElementById("satMax").value || 0) },
-      sodium: { min: Number(document.getElementById("sodiumMin").value || 0), max: Number(document.getElementById("sodiumMax").value || 0) }
-    };
-  }
-
-  fileInput.addEventListener("change", (e) => {
-    const file = e.target.files && e.target.files[0]; if (!file) return;
-    const r = new FileReader(); r.onload = () => { jsonText.value = r.result; }; r.readAsText(file);
-  });
-
-  loadSampleBtn.addEventListener("click", ()=> { jsonText.value = sampleJSON(); });
-  parseBtn.addEventListener("click", () => { alert("JSON loaded. Now click 'Create Plan'."); });
-
-  function normalizeItems(rawArr) {
-    const list = Array.isArray(rawArr) ? rawArr : [];
-    return list.map((raw, idx) => {
-      const name = raw.name || raw.label || raw.title || `Item ${idx+1}`;
-      const servings = Math.max(0, Math.floor(Number(raw.servings || raw.quantity || 0)));
-      const expStr = raw.expiration || raw.expiry;
-      const expiration = parseDateString(expStr);
-      function getOne(keys, def=0) {
-        for (const k of keys) if (raw[k] != null && raw[k] !== "") return Number(raw[k]) || 0; return def;
-      }
-      const nutrients = {
-        calories: getOne(["calories","kcal"]), carbs: getOne(["carbs","carb"]),
-        sugar: getOne(["sugar","sugars"]), protein: getOne(["protein"]),
-        saturatedFat: getOne(["saturatedFat","satFat"]), sodium: getOne(["sodium"])
-      };
-      return { id: idx, name, servings, expiration, nutrients, raw };
-    });
-  }
-
-  let lastPlanJSON = null;
-
-  // --- START: GENETIC ALGORITHM ---
-  const GA_CONFIG = {
-      POPULATION_SIZE: 50, MUTATION_RATE: 0.05,
-      TOURNAMENT_SIZE: 5, ELITISM_COUNT: 2,
-  };
-
-  function getSchedulingUrgency(unit, startDate) {
-      const daysUntilExpiry = ((unit.expiration?.getTime() || Infinity) - startDate.getTime()) / MS_DAY;
-      const urgency = 1.0 - (daysUntilExpiry / 112.5); // Maps [0-90 days] -> [100%-20% prob]
-      return Math.max(0.2, Math.min(1.0, urgency));
-  }
-
-  function createRandomIndividual(units, startDate, totalDays) {
-      return units.map(unit => {
-          const maxDayIndex = Math.floor(((unit.expiration?.getTime() || Infinity) - startDate.getTime()) / MS_DAY);
-          const lastSchedulableDay = Math.min(totalDays - 1, maxDayIndex);
-          if (lastSchedulableDay < 0) return -1;
-          const scheduleProbability = getSchedulingUrgency(unit, startDate);
-          return Math.random() < scheduleProbability
-              ? Math.floor(Math.random() * (lastSchedulableDay + 1))
-              : -1;
-      });
-  }
-
-  function calculateFitness(individual, units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays) {
-      let fitness = 100000;
-      const weeklyTotals = Array.from({length: numWeeks}, () => Object.fromEntries(macros.map(m=>[m,0])));
-      let wastedCount = 0;
-      individual.forEach((day, unitIndex) => {
-          if (day === -1) {
-              const unit = units[unitIndex];
-              const daysUntilExpiry = ((unit.expiration?.getTime() || Infinity) - startDate.getTime()) / MS_DAY;
-              if (daysUntilExpiry < totalDays) wastedCount++;
-          } else {
-              const weekIndex = Math.floor(day / 7);
-              if (weekIndex < numWeeks) {
-                  const unit = units[unitIndex];
-                  for (const m of macros) weeklyTotals[weekIndex][m] += unit.nutrients[m] || 0;
-              }
-          }
-      });
-      fitness -= wastedCount * 500;
-      weeklyTotals.forEach(week => {
-          for (const m of macros) {
-              const total = week[m], min = weeklyMin[m], max = weeklyMax[m];
-              let deviation = 0;
-              let penaltyMultiplier;
-              if (total < min) {
-                  deviation = min - total;
-                  penaltyMultiplier = 100;
-              } else if (total > max) {
-                  deviation = total - max;
-                  penaltyMultiplier = 300;
-              }
-              if (deviation > 0 && max > 0) {
-                  fitness -= (deviation / max) * penaltyMultiplier;
-              }
-          }
-      });
-      return Math.max(0, fitness);
-  }
-
-  function selection(population) {
-      let tournament = [];
-      for (let i = 0; i < GA_CONFIG.TOURNAMENT_SIZE; i++) tournament.push(population[Math.floor(Math.random() * population.length)]);
-      return tournament.reduce((best, current) => current.fitness > best.fitness ? current : best);
-  }
-
-  function crossover(p1, p2) {
-      const point = Math.floor(Math.random() * p1.length);
-      return p1.slice(0, point).concat(p2.slice(point));
-  }
-
-  function mutate(individual, units, startDate, totalDays) {
-      for (let i = 0; i < individual.length; i++) {
-          if (Math.random() < GA_CONFIG.MUTATION_RATE) {
-              const unit = units[i];
-              const scheduleProbability = getSchedulingUrgency(unit, startDate);
-              if (individual[i] === -1) {
-                  if (Math.random() < scheduleProbability) {
-                     const maxDayIndex = Math.floor(((unit.expiration?.getTime() || Infinity) - startDate.getTime()) / MS_DAY);
-                     const lastSchedulableDay = Math.min(totalDays - 1, maxDayIndex);
-                     if(lastSchedulableDay >= 0) {
-                        individual[i] = Math.floor(Math.random() * (lastSchedulableDay + 1));
-                     }
-                  }
-              } else {
-                  if (Math.random() > scheduleProbability) {
-                      individual[i] = -1;
-                  }
-              }
-          }
-      }
-      return individual;
-  }
-  
-  async function runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays, numGenerations) {
-      planBtn.disabled = true;
-      planBtn.textContent = "Initializing population...";
-      let population = Array.from({length: GA_CONFIG.POPULATION_SIZE}, () => ({ individual: createRandomIndividual(units, startDate, totalDays), fitness: 0 }));
-      let bestIndividualOverall = null;
-      for (let gen = 0; gen < numGenerations; gen++) {
-          planBtn.textContent = `Optimizing... (Gen ${gen + 1}/${numGenerations})`;
-          await new Promise(resolve => setTimeout(resolve, 0));
-          for (const p of population) p.fitness = calculateFitness(p.individual, units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays);
-          population.sort((a, b) => b.fitness - a.fitness);
-          if (!bestIndividualOverall || population[0].fitness > bestIndividualOverall.fitness) {
-              bestIndividualOverall = { ...population[0], individual: [...population[0].individual] };
-              planSummary.innerHTML = `Best score: ${Math.round(bestIndividualOverall.fitness)}`;
-          }
-          let newPopulation = population.slice(0, GA_CONFIG.ELITISM_COUNT);
-          while (newPopulation.length < GA_CONFIG.POPULATION_SIZE) {
-              const parent1 = selection(population).individual, parent2 = selection(population).individual;
-              let child = mutate(crossover(parent1, parent2), units, startDate, totalDays);
-              newPopulation.push({ individual: child, fitness: 0 });
-          }
-          population = newPopulation;
-      }
-      planBtn.disabled = false;
-      planBtn.textContent = "Create Plan";
-      return bestIndividualOverall.individual;
-  }
-  
-  planBtn.addEventListener("click", async () => {
-    let parsed;
-    try { parsed = JSON.parse(jsonText.value); }
-    catch (err) { alert("Invalid JSON: " + err.message); return; }
-
-    const items = normalizeItems(parsed);
-    const startDate = parseDateString(startDateInput.value);
-    const numWeeks = parseInt(numWeeksInput.value, 10);
-    const numGenerations = parseInt(numGenerationsInput.value, 10) || 100;
-    if (!startDate || !numWeeks || numWeeks < 1) { alert("Invalid start date or number of weeks."); return; }
-    startDate.setHours(0,0,0,0);
-    const totalDays = numWeeks * 7;
-
-    warningsDiv.innerHTML = ''; // Clear previous warnings
-    const expiredItems = items.filter(it => it.expiration && it.expiration < startDate);
-    if (expiredItems.length > 0) {
-        const expiredNames = expiredItems.map(it => `<li>${it.name} (expires ${isoDateLocal(it.expiration)})</li>`).join('');
-        warningsDiv.innerHTML = `<div class="danger" style="margin-bottom:10px; padding:8px; border:1px solid #f5c6cb; border-radius:4px; background:#f8d7da;"><strong>Warning:</strong> The following items have already expired before the plan's start date and cannot be scheduled:<ul>${expiredNames}</ul></div>`;
-    }
-    const validItems = items.filter(it => !it.expiration || it.expiration >= startDate);
-
-    const perDay = getMacroInputs();
-    const weeklyMin = {}, weeklyMax = {};
-    macros.forEach(m => {
-      weeklyMin[m] = (perDay[m]?.min || 0) * 7;
-      weeklyMax[m] = (perDay[m]?.max > 0 ? perDay[m].max : Infinity) * 7;
-      if (weeklyMax[m] < weeklyMin[m]) weeklyMax[m] = weeklyMin[m];
-    });
-
-    let units = [];
-    // Only create plannable 'units' from items that are not already expired
-    validItems.forEach(it => {
-      for (let s=0; s<it.servings; s++) {
-        units.push({ itemIndex: it.id, name: it.name, nutrients: it.nutrients, expiration: it.expiration });
-      }
-    });
-    units.sort((a,b) => (a.expiration || Infinity) - (b.expiration || Infinity));
-
-    // Handle case where there's nothing to plan
-    if (units.length === 0) {
-        planSummary.innerHTML = "No valid items to schedule.";
-        weeksContainer.innerHTML = "<div class='small'>Nothing to schedule. All items may have expired before the plan start date.</div>";
-        itemsTableContainer.innerHTML = "";
-        wasteList.innerHTML = "";
-        shoppingListContainer.innerHTML = "";
-        return;
-    }
-
-    const bestPlanChromosome = await runGeneticAlgorithm(units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays, numGenerations);
-    
-    const weeks = Array.from({length:numWeeks}, () => ({ totals: Object.fromEntries(macros.map(m => [m,0])) }));
-    const days = Array.from({length:totalDays}, ()=>[]);
-    
-    bestPlanChromosome.forEach((day, unitIndex) => {
-        if (day > -1 && day < totalDays) {
-            const weekIndex = Math.floor(day / 7);
-            days[day].push(units[unitIndex]);
-            macros.forEach(m => weeks[weekIndex].totals[m] += (units[unitIndex].nutrients[m] || 0));
-        }
-    });
-
-    const itemSummaries = items.map(it => ({
-      name: it.name, initialServings: it.servings, perWeek: Array(numWeeks).fill(0), wastedInPlan: 0, atRiskAfterPlan: 0
-    }));
-
-    let totalAssigned = 0;
-    bestPlanChromosome.forEach((day, unitIndex) => {
-        const unit = units[unitIndex];
-        if(day > -1 && day < totalDays) {
-            itemSummaries[unit.itemIndex].perWeek[Math.floor(day/7)]++;
-            totalAssigned++;
-        }
-    });
-
-    let totalWastedInPlan = 0, totalAtRisk = 0;
-    items.forEach((item, idx) => {
-      const summary = itemSummaries[idx];
-
-      if (item.expiration && item.expiration < startDate) {
-          summary.wastedInPlan = item.servings;
-          totalWastedInPlan += item.servings;
-          return;
-      }
-
-      const scheduled = summary.perWeek.reduce((a, b) => a + b, 0);
-      const unscheduled = item.servings - scheduled;
-      if (unscheduled > 0) {
-        const daysUntilExpiry = item.expiration ? (item.expiration.getTime() - startDate.getTime()) / MS_DAY : Infinity;
-        if (daysUntilExpiry < totalDays) {
-          summary.wastedInPlan = unscheduled;
-          totalWastedInPlan += unscheduled;
-        } else {
-          if (scheduled > 0) {
-            const consumptionRate = scheduled / totalDays;
-            const daysToEatRemainder = unscheduled / consumptionRate;
-            const projectedFinishDays = totalDays + daysToEatRemainder;
-            if (projectedFinishDays > daysUntilExpiry) {
-              summary.atRiskAfterPlan = unscheduled;
-              totalAtRisk += unscheduled;
-            }
-          } else if (item.expiration) {
-            summary.atRiskAfterPlan = unscheduled;
-            totalAtRisk += unscheduled;
-          }
-        }
-      }
-    });
-
-    const finalFitness = calculateFitness(bestPlanChromosome, units, weeklyMin, weeklyMax, startDate, numWeeks, totalDays);
-    planSummary.innerHTML = `Plan score: ${Math.round(finalFitness)} • Scheduled: ${totalAssigned} • <span class="danger">Wasted: ${totalWastedInPlan}</span> • <span class="warning">At Risk: ${totalAtRisk}</span>`;
-
-    renderResults({startDate, perDay, weeks, days, itemSummaries, totalWastedInPlan, totalAtRisk, items, numWeeks});
-  });
-
-  function generateAndRenderShoppingList(itemSummaries) {
-    const shoppingList = [];
-    itemSummaries.forEach(item => {
-        const servingsConsumed = item.perWeek.reduce((sum, count) => sum + count, 0);
-        if (servingsConsumed === 0) return; // Don't add items not used in the plan
-
-        const servingsRemaining = item.initialServings - servingsConsumed;
-        const servingsToBuy = servingsConsumed - servingsRemaining;
-
-        if (servingsToBuy > 0) {
-            shoppingList.push({ name: item.name, toBuy: servingsToBuy });
-        }
-    });
-
-    if (shoppingList.length === 0) {
-        shoppingListContainer.innerHTML = 'You have enough of everything to repeat this plan. No shopping needed!';
-    } else {
-        const table = `<table><thead><tr><th>Item</th><th>Servings to Buy</th></tr></thead><tbody>
-            ${shoppingList.map(item => `<tr><td>${item.name}</td><td>${item.toBuy}</td></tr>`).join('')}
-        </tbody></table>`;
-        shoppingListContainer.innerHTML = table;
-    }
-  }
-
-  function renderResults({startDate, perDay, weeks, days, itemSummaries, totalWastedInPlan, totalAtRisk, items, numWeeks}) {
-    weeksContainer.innerHTML = "";
-    weeks.forEach((week, w) => {
-      const weekStart = new Date(startDate.getTime() + w*7*MS_DAY);
-      const weekEnd = new Date(weekStart.getTime() + 6*MS_DAY);
-      const card = document.createElement("div");
-      card.className = "week-card";
-      card.innerHTML = `<div><strong>Week ${w+1}</strong> <span class="small">(${isoDateLocal(weekStart)} → ${isoDateLocal(weekEnd)})</span></div>`;
-      
-      const itemCounts = {};
-      for (let d=w*7; d<(w+1)*7 && d < days.length; d++) days[d].forEach(u => itemCounts[u.name] = (itemCounts[u.name] || 0) + 1);
-      
-      const itemList = document.createElement("div");
-      itemList.style.marginTop = "8px";
-      if (Object.keys(itemCounts).length === 0) {
-        itemList.innerHTML = `<div class="small">No servings scheduled.</div>`;
-      } else {
-        const tbl = document.createElement("table");
-        tbl.innerHTML = "<thead><tr><th>Food</th><th>Servings</th></tr></thead><tbody>" +
-          Object.keys(itemCounts).sort().map(name => `<tr><td>${name}</td><td>${itemCounts[name]}</td></tr>`).join('') +
-          "</tbody>";
-        itemList.appendChild(tbl);
-      }
-      card.appendChild(itemList);
-
-      const macroDiv = document.createElement("div");
-      macroDiv.style.marginTop = "8px";
-      macros.forEach(m => {
-        const weeklyVal = week.totals[m] || 0;
-        const dailyAvg = weeklyVal / 7;
-        const pdMin = perDay[m]?.min || 0;
-        const pdMax = perDay[m]?.max || Infinity;
-        const within = (dailyAvg + 1e-9 >= pdMin && dailyAvg <= pdMax + 1e-9);
-        macroDiv.innerHTML += `<div class="macro-row">
-            <div>
-              <div style="font-weight:600">${macroLabels[m]}</div>
-              <div class="small">weekly: ${Math.round(weeklyVal*10)/10} • daily avg: ${Math.round(dailyAvg*10)/10}</div>
+    <main>
+        <!-- ============================================================================== -->
+        <!-- TAB 1: INVENTORY (Largely unchanged)                                         -->
+        <!-- ============================================================================== -->
+        <div id="inventory" class="tab-content">
+            <div class="container">
+                <h2>Manage Your Food Inventory</h2>
+                <p>Add, edit, and manage all possible food items here. This list acts as your master database for the planner.</p>
+                <div class="flex-container card-container">
+                    <div class="card" style="flex:1">
+                        <h3>Load Existing JSON</h3>
+                        <textarea id="loadArea" rows="8" placeholder="Paste your food JSON array here and click 'Load'"></textarea><br>
+                        <button onclick="window.app.loadJSON()">Load JSON</button>
+                    </div>
+                    <div class="card" style="flex:1">
+                        <h3>Export Inventory</h3>
+                        <button onclick="window.app.exportJSON()">Generate JSON</button>
+                        <button onclick="window.app.downloadJSON()">Download .json</button>
+                        <textarea id="exportArea" rows="8" readonly placeholder="Your generated JSON will appear here"></textarea>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2 id="formTitle">Add New Food</h2>
+                    <form id="foodForm" onsubmit="window.app.saveFood(event)">
+                        <div class="form-grid">
+                            <div><label>Name<br><input id="name" required></label></div>
+                            <div><label>Servings (On-Hand)<br><input id="servings" type="number" value="0" min="0" step="any" required></label></div>
+                            <div><label>Calories<br><input id="calories" type="number" min="0" step="any" required></label></div>
+                            <div><label>Protein (g)<br><input id="protein" type="number" min="0" step="any" required></label></div>
+                            <div><label>Carbs (g)<br><input id="carbs" type="number" min="0" step="any" required></label></div>
+                            <div><label>Sugar (g)<br><input id="sugar" type="number" min="0" step="any" required></label></div>
+                            <div><label>Saturated Fat (g)<br><input id="saturatedFat" type="number" min="0" step="any" required></label></div>
+                            <div><label>Sodium (mg)<br><input id="sodium" type="number" min="0" step="any" required></label></div>
+                            <div><label>Expiration<br><input id="expiration" type="date" required></label></div>
+                            <div class="shoppable-checkbox"><label>
+                                <input id="shoppable" type="checkbox" checked> Shoppable?
+                                <small>Uncheck for free/temporary items that shouldn't appear on the shopping list.</small>
+                            </label></div>
+                        </div><br>
+                        <button type="submit" id="submitBtn">Add Food</button>
+                        <button type="button" onclick="window.app.resetForm()">Clear</button>
+                    </form>
+                </div>
+                <h2>Current Foods</h2>
+                <table id="foodTable">
+                    <thead><tr><th>Name</th><th>On-Hand</th><th>Cal</th><th>Prot</th><th>Carb</th><th>Expire</th><th>Shoppable</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
-            <div>
-              <div class="${within ? 'good' : 'danger'}">${within ? 'OK' : 'OUT'}</div>
-              <div class="small">range: ${pdMin}–${pdMax === Infinity ? '∞' : pdMax}</div>
+        </div>
+
+        <!-- ============================================================================== -->
+        <!-- TAB 2: UNIFIED PLANNER AND DISTRIBUTOR                                       -->
+        <!-- ============================================================================== -->
+        <div id="planner" class="tab-content" style="display:none;">
+            <div class="container">
+
+                <!-- ** NEW: Collapsible configuration section ** -->
+                <details id="config-section" class="card" open>
+                    <summary><h3>Step 1: Configuration & Generation</h3></summary>
+                    <div class="config-content">
+                        <div class="flex-container">
+                            <div style="flex: 2;">
+                                <h4>Plan Dates & Strength</h4>
+                                <div class="row">
+                                    <label>Start Date</label>
+                                    <input id="startDate" type="date">
+                                </div>
+                                <!-- ** NEW: End Date input restored ** -->
+                                <div class="row">
+                                    <label>End Date</label>
+                                    <input id="endDate" type="date">
+                                </div>
+                                <div class="row">
+                                    <label>Optimization Strength</label>
+                                    <input id="numGenerations" type="number" value="1000" min="10" max="5000" title="Higher numbers take longer but may yield a better plan.">
+                                </div>
+                            </div>
+                            <div style="flex: 3;">
+                                <h4>Daily Average Macro Ranges</h4>
+                                <div class="macro-grid">
+                                    <div><label class="small">Calories (min/max)</label><div class="input-pair"><input id="calMin" type="number" value="1800"><input id="calMax" type="number" value="2200"></div></div>
+                                    <div><label class="small">Carbs (g) (min/max)</label><div class="input-pair"><input id="carbMin" type="number" value="50"><input id="carbMax" type="number" value="400"></div></div>
+                                    <div><label class="small">Sugar (g) (min/max)</label><div class="input-pair"><input id="sugarMin" type="number" value="0"><input id="sugarMax" type="number" value="100"></div></div>
+                                    <div><label class="small">Protein (g) (min/max)</label><div class="input-pair"><input id="proteinMin" type="number" value="50"><input id="proteinMax" type="number" value="200"></div></div>
+                                    <div><label class="small">Sat. fat (g) (min/max)</label><div class="input-pair"><input id="satMin" type="number" value="0"><input id="satMax" type="number" value="14"></div></div>
+                                    <div><label class="small">Sodium (mg) (min/max)</label><div class="input-pair"><input id="sodiumMin" type="number" value="0"><input id="sodiumMax" type="number" value="1600"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="summary" id="warnings"></div>
+                        <div style="margin-top:20px; text-align: center;">
+                            <button id="planBtn" class="primary-action" style="padding: 12px 24px; font-size: 16px;">Generate Plan</button>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- ** NEW: Collapsible results and daily plan section ** -->
+                <details id="results-section" class="card">
+                    <summary><h3>Step 2: Plan Results & Daily Adjustments</h3></summary>
+                    <div class="results-content">
+                        <div class="results-header">
+                            <div>
+                                <!-- ** NEW: Placeholders for GA progress and final summary ** -->
+                                <div id="planSummary">No plan generated yet.</div>
+                                <div id="planAveragesContainer" class="plan-averages"></div>
+                            </div>
+                            <!-- ** NEW: Re-optimization controls ** -->
+                            <div class="re-optimize-controls">
+                                <label for="recalcGenerations">Re-Opt. Strength</label>
+                                <input id="recalcGenerations" type="number" value="200" min="10" max="5000">
+                                <button id="recalcBtn" onclick="window.app.recalculatePlan()">Re-Optimize Future</button>
+                            </div>
+                        </div>
+
+                        <div class="flex-container">
+                            <div class="summary-column">
+                                <h4>Shopping List</h4>
+                                <div id="shoppingListContainer"></div>
+                                <h4>Waste Analysis</h4>
+                                <div id="wasteList"></div>
+                                <h4>Actions</h4>
+                                <button id="commitPlanBtn" onclick="window.app.commitPlanToInventory()" style="display:none;">Commit Plan & Update Inventory</button>
+                            </div>
+                            <div class="plan-grid-column">
+                                <div id="plan-grid">
+                                    <!-- The daily meal plan grid will be rendered here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
-          </div>`;
-      });
-      card.appendChild(macroDiv);
-      weeksContainer.appendChild(card);
-    });
-    
-    const weekHeaders = Array.from({length: numWeeks}, (_, i) => `<th>W${i+1}</th>`).join('');
-    itemsTableContainer.innerHTML = `<table>
-        <thead><tr><th>Food</th><th>Total</th>${weekHeaders}<th>Wasted (in plan)</th><th>At Risk (after plan)</th></tr></thead>
-        <tbody>
-          ${itemSummaries.map(it => `
-            <tr>
-              <td>${it.name}</td>
-              <td>${it.initialServings}</td>
-              ${it.perWeek.map(w => `<td>${w}</td>`).join('')}
-              <td class="${it.wastedInPlan ? 'danger' : ''}">${it.wastedInPlan}</td>
-              <td class="${it.atRiskAfterPlan ? 'warning' : ''}">${it.atRiskAfterPlan}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`;
+        </div>
+    </main>
 
-    const wasteRows = itemSummaries.filter(it => it.wastedInPlan > 0);
-    const riskRows = itemSummaries.filter(it => it.atRiskAfterPlan > 0);
-    let wasteHtml = '';
-    if (wasteRows.length > 0) {
-      wasteHtml += `<div class="danger">Definite Waste (expires during plan):</div><ul>${wasteRows.map(it => `<li>${it.name}: ${it.wastedInPlan} servings will expire before the plan ends.</li>`).join('')}</ul>`;
-    }
-    if (riskRows.length > 0) {
-      wasteHtml += `<div class="warning" style="margin-top:8px;">At Risk (expires after plan):</div><ul>${riskRows.map(it => `<li>${it.name}: ${it.atRiskAfterPlan} servings are projected to expire before they are eaten based on the current plan's consumption rate.</li>`).join('')}</ul>`;
-    }
-    if (wasteHtml === '') {
-      wasteList.innerHTML = "<div class='small'>No servings are expected to be wasted or at risk.</div>";
-    } else {
-      wasteList.innerHTML = wasteHtml;
-    }
-    
-    lastPlanJSON = {
-        planParameters: { startDate: isoDateLocal(startDate), numWeeks },
-        items: items.map((it, idx) => ({ ...it, ...itemSummaries[idx], expiration: isoDateLocal(it.expiration) })),
-        weeks: weeks.map((w, idx) => ({ week: idx+1, totals: w.totals }))
-    };
-
-    // --- START: PERSISTENCE ---
-    const planDataToSave = {
-        startDate: isoDateLocal(startDate), perDay, weeks, days, itemSummaries,
-        totalWastedInPlan, totalAtRisk, numWeeks,
-        items: items.map(it => ({...it, raw: undefined, expiration: isoDateLocal(it.expiration)}))
-    };
-    localStorage.setItem(LS_KEY_PLAN_DATA, stringifyForStorage(planDataToSave));
-    // --- END: PERSISTENCE ---
-    
-    generateAndRenderShoppingList(itemSummaries);
-    window.scrollTo({ top: 200, behavior: 'smooth' });
-  }
-
-  downloadPlanBtn.addEventListener("click", () => {
-    if (!lastPlanJSON) { alert("No plan computed yet. Click 'Create Plan' first."); return; }
-    const blob = new Blob([JSON.stringify(lastPlanJSON, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `food_plan_${new Date().toISOString().slice(0,10)}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
-
-  // --- START: PERSISTENCE LOGIC ---
-  function saveJsonText() {
-    localStorage.setItem(LS_KEY_JSON, jsonText.value);
-  }
-
-  function saveConfig() {
-      const config = {};
-      configInputIds.forEach(id => {
-          const el = document.getElementById(id);
-          if (el) config[id] = el.value;
-      });
-      localStorage.setItem(LS_KEY_CONFIG, JSON.stringify(config));
-  }
-
-  function loadFromLocalStorage() {
-      // Load JSON text
-      const savedJson = localStorage.getItem(LS_KEY_JSON);
-      if (savedJson) jsonText.value = savedJson;
-
-      // Load config
-      const savedConfigStr = localStorage.getItem(LS_KEY_CONFIG);
-      if (savedConfigStr) {
-          try {
-              const savedConfig = JSON.parse(savedConfigStr);
-              configInputIds.forEach(id => {
-                  const el = document.getElementById(id);
-                  if (el && savedConfig[id] !== undefined) el.value = savedConfig[id];
-              });
-          } catch(e) { console.error("Could not load config", e); }
-      }
-
-      // Load and render last plan
-      const savedPlanDataStr = localStorage.getItem(LS_KEY_PLAN_DATA);
-      if (savedPlanDataStr) {
-          const planData = parseFromStorage(savedPlanDataStr);
-          if (planData) {
-              planData.startDate = parseDateString(planData.startDate);
-              if (planData.items && Array.isArray(planData.items)) {
-                planData.items.forEach(item => { item.expiration = parseDateString(item.expiration); });
-              }
-              renderResults(planData);
-          }
-      }
-  }
-
-  jsonText.addEventListener('input', saveJsonText);
-  configInputIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('change', saveConfig);
-  });
-
-  clearDataBtn.addEventListener('click', () => {
-      if (confirm("Are you sure you want to clear all saved data? This will reload the page.")) {
-          localStorage.removeItem(LS_KEY_JSON);
-          localStorage.removeItem(LS_KEY_CONFIG);
-          localStorage.removeItem(LS_KEY_PLAN_DATA);
-          location.reload();
-      }
-  });
-
-  loadFromLocalStorage();
-  // --- END: PERSISTENCE LOGIC ---
-
-})();
-</script>
+    <script src="app.js"></script>
 </body>
 </html>

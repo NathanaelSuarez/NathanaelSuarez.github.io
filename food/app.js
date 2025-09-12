@@ -13,8 +13,15 @@
 
     const MS_DAY = 24 * 60 * 60 * 1000;
     const MEAL_NAMES = ["Breakfast", "Lunch", "Dinner", "Snack"];
-    const MACRO_WEIGHTS = { calories: 1.0, protein: 0.8, carbs: 0.5, sodium: 0.3, saturatedFat: 0.2, sugar: 0.2 };
+    // ** UPDATED: Added fiber with a weight **
+    const MACRO_WEIGHTS = { calories: 1.0, protein: 0.8, carbs: 0.5, fiber: 0.6, sodium: 0.3, saturatedFat: 0.2, sugar: 0.2 };
     const PENALTY_SCALE_FACTOR = 5000;
+    
+    // UPDATED PENALTY CONSTANTS
+    const WASTE_PENALTY = 10000; // A very large penalty for items that expire DURING the plan and are not used.
+    const URGENCY_PENALTY_FACTOR = 5000; // Scales the penalty for unassigned items based on how soon they expire.
+    const LIMIT_VIOLATION_PENALTY = 8000; // NEW: Strong penalty for exceeding daily food limits.
+
 
     function parseDateString(s) {
         if (!s) return null;
@@ -45,14 +52,16 @@
 
     function saveState() {
         try {
-            localStorage.setItem('foodPlanner_database_v5', JSON.stringify(foodDatabase));
-            localStorage.setItem('foodPlanner_plan_v5', JSON.stringify(currentPlan));
-            localStorage.setItem('foodPlanner_distributor_v5', JSON.stringify(distributorData));
+            localStorage.setItem('foodPlanner_database_v5', JSON.stringify(foodDatabase)); // Changed v5 to v6 if you want to force clear old data
+            localStorage.setItem('foodPlanner_plan_v5', JSON.stringify(currentPlan)); // Changed v5 to v6
+            localStorage.setItem('foodPlanner_distributor_v5', JSON.stringify(distributorData)); // Changed v5 to v6
         } catch (e) { console.error("Failed to save state:", e); }
     }
 
     function loadState() {
-        const savedDB = localStorage.getItem('foodPlanner_database_v5');
+        // You might want to increment the version number (e.g., to 'v6') if you make
+        // breaking changes to the data structure that require users to re-enter or convert data.
+        const savedDB = localStorage.getItem('foodPlanner_database_v5'); 
         const savedPlan = localStorage.getItem('foodPlanner_plan_v5');
         const savedDist = localStorage.getItem('foodPlanner_distributor_v5');
 
@@ -98,13 +107,16 @@
         foodDatabase.sort((a, b) => a.name.localeCompare(b.name));
         foodDatabase.forEach((f, i) => {
             const tr = document.createElement('tr');
+            // ** UPDATED: Added fiber column **
             tr.innerHTML = `
                 <td>${f.name}</td>
                 <td>${f.servings}</td>
                 <td>${f.calories}</td>
                 <td>${f.protein}</td>
                 <td>${f.carbs}</td>
+                <td>${f.fiber || 0}</td>
                 <td>${f.expiration}</td>
+                <td>${f.maxPerDay || 99}</td>
                 <td>${f.shoppable ? '✅' : '❌'}</td>
                 <td class="actions">
                     <button onclick="window.app.duplicateFood(${i})">Duplicate</button>
@@ -117,16 +129,19 @@
 
     function saveFood(e) {
         e.preventDefault();
+        // ** UPDATED: Added fiber property **
         const foodItem = {
             name: document.getElementById('name').value.trim(),
             servings: +document.getElementById('servings').value,
             calories: +document.getElementById('calories').value,
             protein: +document.getElementById('protein').value,
             carbs: +document.getElementById('carbs').value,
+            fiber: +document.getElementById('fiber').value,
             sugar: +document.getElementById('sugar').value,
             saturatedFat: +document.getElementById('saturatedFat').value,
             sodium: +document.getElementById('sodium').value,
             expiration: document.getElementById('expiration').value,
+            maxPerDay: parseInt(document.getElementById('maxPerDay').value, 10) || 99,
             shoppable: document.getElementById('shoppable').checked
         };
 
@@ -182,6 +197,7 @@
     function resetForm() {
         document.getElementById('foodForm').reset();
         document.getElementById('shoppable').checked = true;
+        document.getElementById('maxPerDay').value = '99';
         editingIndex = null;
         document.getElementById('submitBtn').textContent = 'Add Food';
         document.getElementById('formTitle').textContent = 'Add New Food';
@@ -192,16 +208,19 @@
             const arr = JSON.parse(document.getElementById('loadArea').value.trim() || '[]');
             if (!Array.isArray(arr)) throw new Error('Input is not a valid JSON array.');
             
+            // ** UPDATED: Added fiber validation **
             const validatedArr = arr.map(item => ({
                 name: String(item.name || `Unnamed Item`).trim(),
                 servings: Math.max(0, Number(item.servings || 0)),
                 calories: Math.max(0, Number(item.calories || 0)),
                 protein: Math.max(0, Number(item.protein || 0)),
                 carbs: Math.max(0, Number(item.carbs || 0)),
+                fiber: Math.max(0, Number(item.fiber || 0)),
                 sugar: Math.max(0, Number(item.sugar || 0)),
                 saturatedFat: Math.max(0, Number(item.saturatedFat || 0)),
                 sodium: Math.max(0, Number(item.sodium || 0)),
                 expiration: item.expiration ? String(item.expiration) : isoDate(new Date(Date.now() + 365 * MS_DAY)),
+                maxPerDay: parseInt(item.maxPerDay, 10) || 99,
                 shoppable: typeof item.shoppable === 'boolean' ? item.shoppable : true
             }));
 
@@ -235,12 +254,9 @@
     // 4. QUADRATIC PROGRAMMING OPTIMIZATION
     // ============================================================================== //
 
-    /**
-     * Simplified Quadratic Programming solver using gradient descent with constraints
-     * This approaches the problem as a continuous optimization then discretizes
-     */
 class QPOptimizer {
-    constructor(units, macroGoals, startDate, totalDays) {
+    // MODIFICATION: Accept optimizationStrength in the constructor
+    constructor(units, macroGoals, startDate, totalDays, optimizationStrength) {
         this.units = units;
         this.macroGoals = macroGoals;
         this.startDate = startDate;
@@ -248,18 +264,37 @@ class QPOptimizer {
         this.numUnits = units.length;
         this.macros = Object.keys(this.macroGoals);
         
-        // Precompute valid day ranges for each unit
-        this.validDayRanges = units.map(unit => {
-            const maxDay = unit.expiration ? 
-                Math.min(totalDays - 1, Math.floor((unit.expiration.getTime() - startDate.getTime()) / MS_DAY)) :
-                totalDays - 1;
-            return { min: 0, max: Math.max(-1, maxDay) };
+        // MODIFICATION: Store the strength and provide a safe default
+        this.optimizationStrength = optimizationStrength || 5; // Default to 5 restarts if not provided
+
+        // Precompute valid day ranges and expiry info for each unit
+        this.unitExpiryInfo = units.map(unit => {
+            const daysUntilExpiry = unit.expiration ? 
+                (unit.expiration.getTime() - startDate.getTime()) / MS_DAY : Infinity;
+            
+            const maxDay = daysUntilExpiry === Infinity ? 
+                           totalDays - 1 : 
+                           Math.min(totalDays - 1, Math.floor(daysUntilExpiry));
+            
+            return {
+                daysUntilExpiry: daysUntilExpiry,
+                validDayRange: { min: 0, max: Math.max(-1, maxDay) }
+            };
         });
     }
 
-    /**
-     * Helper to calculate the nutrient penalty for a single day's totals.
-     */
+    _getUnassignedPenalty(unitInfo) {
+        if (unitInfo.daysUntilExpiry < this.totalDays) {
+            return WASTE_PENALTY; // Definitely wasted
+        }
+        if (unitInfo.daysUntilExpiry !== Infinity) {
+            // Urgency penalty: higher for items expiring sooner.
+            // The +1 prevents division by zero and smooths the penalty for items expiring very soon.
+            return URGENCY_PENALTY_FACTOR / (unitInfo.daysUntilExpiry - this.totalDays + 1);
+        }
+        return 0; // No penalty for non-perishable items
+    }
+
     _calculateDayPenalty(dayTotal) {
         let penalty = 0;
         this.macros.forEach(macro => {
@@ -280,47 +315,41 @@ class QPOptimizer {
         return penalty;
     }
     
-    /**
-     * Helper to determine if a unit is considered "wasted" when unassigned.
-     */
-    _isWasted(unit) {
-        if (unit.type === 'on-hand' && unit.expiration) {
-            const daysUntilExpiry = (unit.expiration.getTime() - this.startDate.getTime()) / MS_DAY;
-            return daysUntilExpiry < this.totalDays;
-        }
-        return false;
-    }
-
-    /**
-     * Compute the full objective function value (quadratic penalty + waste penalty).
-     * Used for initialization and verification.
-     */
     computeObjective(allocation) {
-        const dailyTotals = this._calculateDailyTotals(allocation);
+        const { dailyTotals, dailyFoodCounts } = this._calculateDailyTotalsAndCounts(allocation); // MODIFIED
         let totalPenalty = 0;
         
-        // Sum nutrient penalties for each day
         dailyTotals.forEach(dayTotal => {
             totalPenalty += this._calculateDayPenalty(dayTotal);
         });
 
-        // Add waste penalty for unassigned, expiring items
+        // NEW: Add penalty for violating daily food limits
+        dailyFoodCounts.forEach(dayCounts => {
+            for (const [foodName, count] of Object.entries(dayCounts)) {
+                // Find the original food item to get its limit.
+                const foodUnitExample = this.units.find(u => u.name === foodName); // Find any unit of this food type
+                if (foodUnitExample && foodUnitExample.maxPerDay && count > foodUnitExample.maxPerDay) {
+                    totalPenalty += (count - foodUnitExample.maxPerDay) * LIMIT_VIOLATION_PENALTY;
+                }
+            }
+        });
+
         allocation.forEach((day, unitIdx) => {
-            if (day === -1 && this._isWasted(this.units[unitIdx])) {
-                totalPenalty += 500; // Waste penalty
+            if (day === -1 && this.units[unitIdx].type === 'on-hand') { // Only on-hand items can be wasted
+                totalPenalty += this._getUnassignedPenalty(this.unitExpiryInfo[unitIdx]);
             }
         });
 
         return totalPenalty;
     }
 
-    /**
-     * Helper to calculate the initial daily nutrient totals for a given allocation.
-     */
-    _calculateDailyTotals(allocation) {
+    // MODIFIED: This function now calculates both macro totals and food counts
+    _calculateDailyTotalsAndCounts(allocation) {
+        // ** UPDATED: Added fiber to daily totals **
         const dailyTotals = Array.from({ length: this.totalDays }, () => ({
-            calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0
+            calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0
         }));
+        const dailyFoodCounts = Array.from({ length: this.totalDays }, () => ({})); // NEW
 
         allocation.forEach((day, unitIdx) => {
             if (day >= 0 && day < this.totalDays) {
@@ -328,60 +357,71 @@ class QPOptimizer {
                 this.macros.forEach(macro => {
                     dailyTotals[day][macro] += unit.nutrients[macro] || 0;
                 });
+                // NEW: Track food counts
+                dailyFoodCounts[day][unit.name] = (dailyFoodCounts[day][unit.name] || 0) + 1;
             }
         });
-        return dailyTotals;
+        return { dailyTotals, dailyFoodCounts };
     }
     
-    /**
-     * **[CORE OPTIMIZATION]**
-     * Calculates the change in objective score from moving one unit, without recalculating everything.
-     */
-    _calculateObjectiveDelta(unit, fromDay, toDay, dailyTotals) {
+    // MODIFIED: Now accepts dailyFoodCounts and calculates limit violation penalty delta
+    _calculateObjectiveDelta(unit, unitIdx, fromDay, toDay, dailyTotals, dailyFoodCounts) {
         if (fromDay === toDay) return 0;
 
         let delta = 0;
 
-        // 1. Calculate nutrient penalty change
+        // 1. Nutrient penalty change
         const oldTotalsFrom = (fromDay !== -1) ? { ...dailyTotals[fromDay] } : null;
         const oldTotalsTo = (toDay !== -1) ? { ...dailyTotals[toDay] } : null;
-        
         const oldPenaltyFrom = oldTotalsFrom ? this._calculateDayPenalty(oldTotalsFrom) : 0;
         const oldPenaltyTo = oldTotalsTo ? this._calculateDayPenalty(oldTotalsTo) : 0;
-        
         const newTotalsFrom = oldTotalsFrom ? { ...oldTotalsFrom } : null;
-        if (newTotalsFrom) {
-            this.macros.forEach(m => newTotalsFrom[m] -= unit.nutrients[m] || 0);
-        }
-        
+        if (newTotalsFrom) this.macros.forEach(m => newTotalsFrom[m] -= unit.nutrients[m] || 0);
         const newTotalsTo = oldTotalsTo ? { ...oldTotalsTo } : null;
-        if (newTotalsTo) {
-            this.macros.forEach(m => newTotalsTo[m] += unit.nutrients[m] || 0);
-        }
-        
+        if (newTotalsTo) this.macros.forEach(m => newTotalsTo[m] += unit.nutrients[m] || 0);
         const newPenaltyFrom = newTotalsFrom ? this._calculateDayPenalty(newTotalsFrom) : 0;
         const newPenaltyTo = newTotalsTo ? this._calculateDayPenalty(newTotalsTo) : 0;
-
         delta += (newPenaltyFrom + newPenaltyTo) - (oldPenaltyFrom + oldPenaltyTo);
 
-        // 2. Calculate waste penalty change
-        const isPotentiallyWasted = this._isWasted(unit);
-        if (isPotentiallyWasted) {
-            if (fromDay === -1 && toDay !== -1) { // Moving from wasted to used
-                delta -= 500;
-            } else if (fromDay !== -1 && toDay === -1) { // Moving from used to wasted
-                delta += 500;
+        // 2. Waste and Urgency penalty change
+        if (unit.type === 'on-hand') {
+            const unitInfo = this.unitExpiryInfo[unitIdx];
+            const unassignedPenalty = this._getUnassignedPenalty(unitInfo);
+            
+            if (fromDay === -1 && toDay !== -1) { // Moving from unassigned to assigned
+                delta -= unassignedPenalty;
+            } else if (fromDay !== -1 && toDay === -1) { // Moving from assigned to unassigned
+                delta += unassignedPenalty;
+            }
+        }
+        
+        // 3. NEW: Food limit violation penalty change
+        const limit = unit.maxPerDay || 99;
+        
+        // Potential change from 'fromDay'
+        if (fromDay !== -1) {
+            const currentCount = dailyFoodCounts[fromDay][unit.name] || 0;
+            if (currentCount > limit) { // If it was violating before moving
+                // After moving, count will be currentCount - 1. If (currentCount - 1) is now <= limit, penalty is removed.
+                if (currentCount - 1 <= limit) {
+                    delta -= LIMIT_VIOLATION_PENALTY * (currentCount - limit); // Remove penalty for the units now within limit
+                }
+            }
+        }
+        // Potential change for 'toDay'
+        if (toDay !== -1) {
+            const currentCount = dailyFoodCounts[toDay][unit.name] || 0;
+            if (currentCount >= limit) { // If it will be violating after moving
+                // After moving, count will be currentCount + 1. If (currentCount) was already >= limit,
+                // and (currentCount + 1) is even higher, then add penalty for the additional unit
+                delta += LIMIT_VIOLATION_PENALTY;
             }
         }
         
         return delta;
     }
     
-    /**
-     * Initialize solution using a greedy heuristic
-     */
     initializeSolution() {
-        // (This function is unchanged as it's efficient enough for a one-time operation)
         const allocation = Array(this.numUnits).fill(-1);
         const dailyDeficits = Array.from({ length: this.totalDays }, () => ({
             calories: this.macroGoals.calories.min,
@@ -391,16 +431,14 @@ class QPOptimizer {
 
         const unitIndices = Array.from({ length: this.numUnits }, (_, i) => i);
         unitIndices.sort((a, b) => {
-            const urgencyA = this.units[a].expiration ? 
-                (this.units[a].expiration.getTime() - this.startDate.getTime()) / MS_DAY : Infinity;
-            const urgencyB = this.units[b].expiration ? 
-                (this.units[b].expiration.getTime() - this.startDate.getTime()) / MS_DAY : Infinity;
+            const urgencyA = this.unitExpiryInfo[a].daysUntilExpiry;
+            const urgencyB = this.unitExpiryInfo[b].daysUntilExpiry;
             return urgencyA - urgencyB;
         });
 
         for (const unitIdx of unitIndices) {
             const unit = this.units[unitIdx];
-            const range = this.validDayRanges[unitIdx];
+            const range = this.unitExpiryInfo[unitIdx].validDayRange;
             if (range.max < 0) continue;
 
             let bestDay = -1, bestScore = Infinity;
@@ -428,68 +466,70 @@ class QPOptimizer {
         return allocation;
     }
 
-    /**
-     * Local search optimization using hill climbing with incremental updates.
-     */
     localSearch(allocation, iterations = 100) {
         let currentAllocation = [...allocation];
-        
-        // Perform one full calculation at the start
-        const dailyTotals = this._calculateDailyTotals(currentAllocation);
+        // MODIFIED: Calculate both totals and counts
+        const { dailyTotals, dailyFoodCounts } = this._calculateDailyTotalsAndCounts(currentAllocation);
         let currentObjective = this.computeObjective(currentAllocation);
 
         for (let iter = 0; iter < iterations; iter++) {
             let improved = false;
             
-            // Try moving each unit to a different valid day
             for (let unitIdx = 0; unitIdx < this.numUnits; unitIdx++) {
                 const unit = this.units[unitIdx];
                 const currentDay = currentAllocation[unitIdx];
-                const range = this.validDayRanges[unitIdx];
-                
-                for (let newDay = -1; newDay <= range.max; newDay++) {
+                const range = this.unitExpiryInfo[unitIdx].validDayRange;
+                const possibleDays = [-1]; // Include the option to un-assign
+                for(let d=range.min; d <= range.max; d++) possibleDays.push(d);
+
+                for (const newDay of possibleDays) {
                     if (newDay === currentDay) continue;
                     
-                    // Use the fast delta calculation
-                    const delta = this._calculateObjectiveDelta(unit, currentDay, newDay, dailyTotals);
+                    // MODIFIED: Pass dailyFoodCounts to the delta calculation
+                    const delta = this._calculateObjectiveDelta(unit, unitIdx, currentDay, newDay, dailyTotals, dailyFoodCounts);
                     
-                    if (delta < -0.01) { // Accept improvement
+                    if (delta < -0.01) { 
                         currentObjective += delta;
                         
-                        // Update the state incrementally
-                        if (currentDay !== -1) this.macros.forEach(m => dailyTotals[currentDay][m] -= unit.nutrients[m] || 0);
-                        if (newDay !== -1) this.macros.forEach(m => dailyTotals[newDay][m] += unit.nutrients[m] || 0);
+                        // MODIFIED: Update both totals and counts after a successful move
+                        if (currentDay !== -1) {
+                            this.macros.forEach(m => dailyTotals[currentDay][m] -= unit.nutrients[m] || 0);
+                            dailyFoodCounts[currentDay][unit.name]--;
+                            if(dailyFoodCounts[currentDay][unit.name] === 0) delete dailyFoodCounts[currentDay][unit.name];
+                        }
+                        if (newDay !== -1) {
+                            this.macros.forEach(m => dailyTotals[newDay][m] += unit.nutrients[m] || 0);
+                            dailyFoodCounts[newDay][unit.name] = (dailyFoodCounts[newDay][unit.name] || 0) + 1;
+                        }
                         currentAllocation[unitIdx] = newDay;
                         
                         improved = true;
-                        // Since we made a move, restart the scan for this unit from its new position
-                        // This is a "first improvement" strategy which is often faster
                         break; 
                     }
                 }
             }
             
-            if (!improved) break; // Local optimum reached
+            if (!improved) break; 
         }
         return currentAllocation;
     }
 
-    /**
-     * Main optimization routine
-     */
     optimize() {
-        console.log('Starting QP optimization (Fast Version)...');
+        console.log('Starting QP optimization with Urgency Penalty and Daily Limits...'); // UPDATED LOG
         
         let bestAllocation = this.initializeSolution();
         let bestObjective = this.computeObjective(bestAllocation);
         console.log(`Initial objective: ${bestObjective.toFixed(2)}`);
         
-        const numRestarts = 3;
+        // MODIFICATION: Use the stored strength value for the loop
+        const numRestarts = this.optimizationStrength;
+        console.log(`Running with ${numRestarts} restarts (strength)...`);
+
         for (let restart = 0; restart < numRestarts; restart++) {
             let allocation = (restart === 0) ? [...bestAllocation] : this.perturbSolution(bestAllocation);
             
-            allocation = this.localSearch(allocation, 50);
-            const objective = this.computeObjective(allocation); // Full compute only at the end of a search
+            allocation = this.localSearch(allocation, 50); // Local search iterations remain constant at 50
+            const objective = this.computeObjective(allocation);
             
             if (objective < bestObjective) {
                 bestObjective = objective;
@@ -502,16 +542,12 @@ class QPOptimizer {
         return bestAllocation;
     }
 
-    /**
-     * Perturb a solution for restart
-     */
     perturbSolution(allocation) {
-        // (This function is unchanged)
         const perturbed = [...allocation];
         const numChanges = Math.floor(this.numUnits * 0.1);
         for (let i = 0; i < numChanges; i++) {
             const idx = Math.floor(Math.random() * this.numUnits);
-            const range = this.validDayRanges[idx];
+            const range = this.unitExpiryInfo[idx].validDayRange;
             if (range.max >= 0) {
                 if (Math.random() < 0.8) {
                     perturbed[idx] = Math.floor(Math.random() * (range.max + 1));
@@ -532,6 +568,11 @@ class QPOptimizer {
         const planBtn = document.getElementById('planBtn');
         const summaryEl = document.getElementById('planSummary');
 
+        // MODIFICATION: Get strength value from UI, or from recalc params
+        const optimizationStrength = isRecalculation ?
+            recalcParams.strength :
+            parseInt(document.getElementById('numGenerations').value, 10) || 5;
+
         const { consumedOnPartialDay, allowShopping = false } = recalcParams;
 
         if (foodDatabase.length === 0 && !isRecalculation) {
@@ -539,7 +580,7 @@ class QPOptimizer {
             return;
         }
         planBtn.disabled = true;
-        summaryEl.textContent = 'Starting plan optimization...';
+        summaryEl.textContent = `Starting plan optimization with strength ${optimizationStrength}...`;
 
         const startDate = isRecalculation ? recalcParams.startDate : parseDateString(document.getElementById('startDate').value);
         const endDate = isRecalculation ? recalcParams.endDate : parseDateString(document.getElementById('endDate').value);
@@ -553,7 +594,8 @@ class QPOptimizer {
         
         const planDurationDays = Math.round((endDate.getTime() - startDate.getTime()) / MS_DAY) + 1;
         
-        const macroIdMap = { calories: 'cal', carbs: 'carb', sugar: 'sugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium' };
+        // ** UPDATED: Added fiber to macro map **
+        const macroIdMap = { calories: 'cal', carbs: 'carb', sugar: 'sugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
         const macros = Object.keys(macroIdMap);
         const macroGoals = isRecalculation ? recalcParams.macroGoals : {};
 
@@ -586,10 +628,18 @@ class QPOptimizer {
         const inventoryForOpt = isRecalculation ? recalcParams.inventory : foodDatabase;
         let units = [];
         inventoryForOpt.forEach((item, index) => {
-            const itemData = { itemIndex: index, name: item.name, nutrients: item, expiration: parseDateString(item.expiration) };
+            // UPDATED: Ensure maxPerDay is passed to the optimizer for each unit
+            const itemData = { 
+                itemIndex: index, 
+                name: item.name, 
+                nutrients: item, 
+                expiration: parseDateString(item.expiration), 
+                maxPerDay: item.maxPerDay // Crucial for limits
+            };
             for (let i = 0; i < item.servings; i++) units.push({ ...itemData, type: 'on-hand' });
             
             if (item.shoppable && (!isRecalculation || allowShopping)) {
+                // For virtual (shoppable) items, assume plenty available
                 for (let i = 0; i < 200; i++) units.push({ ...itemData, type: 'virtual' });
             }
         });
@@ -611,7 +661,8 @@ class QPOptimizer {
         summaryEl.textContent = 'Running optimization algorithm...';
         await new Promise(resolve => setTimeout(resolve, 10)); // Allow UI update
         
-        const optimizer = new QPOptimizer(units, macroGoals, startDate, planDurationDays);
+        // MODIFICATION: Pass the strength value to the optimizer
+        const optimizer = new QPOptimizer(units, macroGoals, startDate, planDurationDays, optimizationStrength);
         const bestAllocation = optimizer.optimize();
         
         if (!bestAllocation) {
@@ -646,7 +697,7 @@ class QPOptimizer {
                 shoppingList.push({ name: item.name, toBuy });
             }
 
-            const unscheduled = onHand - needed;
+            const unscheduled = onHand - (consumption[item.name] || 0); // Corrected logic
 
             if (unscheduled > 0) {
                 const expiryDate = parseDateString(item.expiration);
@@ -656,6 +707,7 @@ class QPOptimizer {
                     if (daysUntilExpiry < planDurationDays) {
                         wasteAnalysis.wasted.push({ name: item.name, count: unscheduled });
                     } else {
+                        // The 'at-risk' calculation is a projection for the UI
                         if (needed > 0) {
                             const consumptionRate = needed / planDurationDays;
                             const daysToEatRemainder = unscheduled / consumptionRate;
@@ -663,8 +715,8 @@ class QPOptimizer {
                             if (projectedFinishDays > daysUntilExpiry) {
                                 wasteAnalysis.atRisk.push({ name: item.name, count: unscheduled });
                             }
-                        } else {
-                            wasteAnalysis.atRisk.push({ name: item.name, count: unscheduled });
+                        } else { // If none were scheduled, it's at risk if it expires at all
+                           wasteAnalysis.atRisk.push({ name: item.name, count: unscheduled });
                         }
                     }
                 }
@@ -729,7 +781,8 @@ class QPOptimizer {
         }
 
         const averagesContainer = document.getElementById('planAveragesContainer');
-        const totalMacros = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0 };
+        // ** UPDATED: Added fiber to totals **
+        const totalMacros = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
         const foodMap = new Map(foodDatabase.map(f => [f.name, f]));
         const macros = Object.keys(currentPlan.planParameters.originalGoals);
 
@@ -800,7 +853,7 @@ class QPOptimizer {
             MEAL_NAMES.forEach(name => dayMeals[name] = { items: [], completed: false });
 
             dayItems.forEach((item, itemQueueIndex) => {
-                const mealName = MEAL_NAMES[itemQueueIndex % 3];
+                const mealName = MEAL_NAMES[itemQueueIndex % MEAL_NAMES.length]; // Use MEAL_NAMES.length for distribution
                 dayMeals[mealName].items.push(item);
             });
             distributorData.push({ day: dayIndex + 1, meals: dayMeals });
@@ -891,7 +944,8 @@ class QPOptimizer {
             return;
         }
 
-        const consumedOnPartialDay = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0 };
+        // ** UPDATED: Added fiber to consumed totals **
+        const consumedOnPartialDay = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
         MEAL_NAMES.forEach(mealName => {
             const meal = distributorData[firstUncompleted.dayIndex].meals[mealName];
             if (meal && meal.completed) {
@@ -945,14 +999,19 @@ class QPOptimizer {
             return;
         }
 
+        // MODIFICATION: Get recalc strength from UI
+        const recalcStrength = parseInt(document.getElementById('recalcGenerations').value, 10) || 3;
+
         alert("Re-optimizing the remaining plan. Please wait...");
+        // MODIFICATION: Pass the strength value to generatePlan
         const recalcResult = await generatePlan(true, {
             startDate: recalcStartDate,
             endDate: recalcEndDate,
             macroGoals: originalGoals,
             inventory: remainingInventory,
             consumedOnPartialDay: consumedOnPartialDay,
-            allowShopping: allowShopping
+            allowShopping: allowShopping,
+            strength: recalcStrength // Pass the strength from the re-opt input
         });
 
         if (recalcResult && recalcResult.dailySchedule) {
@@ -971,7 +1030,7 @@ class QPOptimizer {
                 const targetDayIndex = firstUncompleted.dayIndex + i;
                 if (targetDayIndex < distributorData.length) {
                     newDayItems.forEach((item, itemQueueIndex) => {
-                        const mealName = MEAL_NAMES[itemQueueIndex % 3];
+                        const mealName = MEAL_NAMES[itemQueueIndex % MEAL_NAMES.length]; // Use MEAL_NAMES.length
                         const targetMeal = distributorData[targetDayIndex].meals[mealName];
                         if (targetMeal && !targetMeal.completed) {
                             targetMeal.items.push(item);
@@ -1010,7 +1069,7 @@ class QPOptimizer {
                         } else if (needed > 0) {
                             const consumptionRate = needed / planDurationDays;
                             const daysToEatRemainder = unscheduled / consumptionRate;
-                            if (planDurationDays + daysToEatRemainder > daysUntilExpiry) {
+                            if (planDurationDays + daysToEatRemainder > expiryDate) { // Corrected comparison
                                 newWasteAnalysis.atRisk.push({ name: item.name, count: unscheduled });
                             }
                         } else {

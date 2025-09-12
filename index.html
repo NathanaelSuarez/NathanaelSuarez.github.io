@@ -3,171 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nathanael Suarez</title>
-    <link rel="stylesheet" href="styles.css">
-
-    <!-- Beam Analytics -->
-    <script
-      src="https://beamanalytics.b-cdn.net/beam.min.js"
-      data-token="5a624ed3-bd18-4e80-98e6-a401d4373524"
-      async
-    >
-    </script>
-    <style>
-        .shiny-button {
-            background: linear-gradient(to bottom, #66b3ff 5%, #0080ff 100%);
-            background-color: #66b3ff;
-            border-radius: 8px;
-            border: 1px solid #004d99;
-            display: inline-block;
-            cursor: pointer;
-            color: #ffffff;
-            font-family: Arial;
-            font-size: 17px;
-            font-weight: bold;
-            padding: 10px 20px;
-            text-decoration: none;
-            text-shadow: 0px 1px 0px #0073e6;
-        }
-
-        .shiny-button:hover {
-            background: linear-gradient(to bottom, #0080ff 5%, #66b3ff 100%);
-            background-color: #0080ff;
-        }
-
-        .shiny-button:active {
-            position: relative;
-            top: 1px;
-        }
-
-        .fruit-button {
-            background-color: #FFDAB9; /* Peach color for a fruit-like background */
-            border: 1px solid #E9967A; /* Light Salmon border */
-            color: #8B4513; /* Saddle Brown text color for contrast */
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 8px;
-        }
-
-        .fruit-button:hover {
-            background-color: #FFA07A; /* Light Salmon on hover */
-        }
-
-        .fruit-button:active {
-            background-color: #FA8072; /* Salmon on active */
-        }
-
-        .nav-bar {
-            display: flex; /* Enable flexbox for the nav-bar */
-            align-items: stretch; /* Make buttons stretch to equal height */
-        }
-
-        .nav-bar button:nth-child(1) { /* Nathanael */
-            background-color: #E0E0E0; /* Light Gray */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(2) { /* Squishy Cube */
-            background-color: #FFFFE0; /* Light Yellow */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(3) { /* Particles */
-            background-color: #ADD8E6; /* Light Blue */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(4) { /* OCR */
-            background-color: #90EE90; /* Light Green */
-            color: black;
-        }
-        .nav-bar button {
-            padding: 10px 20px;
-            margin: 5px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .nav-bar button:hover {
-            opacity: 0.8; /* সামান্য hover effect */
-        }
-    </style>
+    <title>Dynamic Meal Planner</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="header-container">
-        <div class="status-bar">
-            <div class="progress-container">
-                <div class="progress">
-                    <div id="progressBar" class="progress-fill" style="width: 0%"></div>
+
+    <header class="main-header">
+        <h1>Dynamic Meal Planner</h1>
+        <nav class="tab-navigation">
+            <button id="tab-btn-inventory" class="tab-link active" onclick="window.app.showTab('inventory')">1. Inventory</button>
+            <button id="tab-btn-planner" class="tab-link" onclick="window.app.showTab('planner')">2. Create & View Plan</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- ============================================================================== -->
+        <!-- TAB 1: INVENTORY (Largely unchanged)                                         -->
+        <!-- ============================================================================== -->
+        <div id="inventory" class="tab-content">
+            <div class="container">
+                <h2>Manage Your Food Inventory</h2>
+                <p>Add, edit, and manage all possible food items here. This list acts as your master database for the planner.</p>
+                <div class="flex-container card-container">
+                    <div class="card" style="flex:1">
+                        <h3>Load Existing JSON</h3>
+                        <textarea id="loadArea" rows="8" placeholder="Paste your food JSON array here and click 'Load'"></textarea><br>
+                        <button onclick="window.app.loadJSON()">Load JSON</button>
+                    </div>
+                    <div class="card" style="flex:1">
+                        <h3>Export Inventory</h3>
+                        <button onclick="window.app.exportJSON()">Generate JSON</button>
+                        <button onclick="window.app.downloadJSON()">Download .json</button>
+                        <textarea id="exportArea" rows="8" readonly placeholder="Your generated JSON will appear here"></textarea>
+                    </div>
                 </div>
-                <div class="counter" id="counter">0/5</div>
+                <div class="card">
+                    <h2 id="formTitle">Add New Food</h2>
+                    <form id="foodForm" onsubmit="window.app.saveFood(event)">
+                        <div class="form-grid">
+                            <div><label>Name<br><input id="name" required></label></div>
+                            <div><label>Servings (On-Hand)<br><input id="servings" type="number" value="0" min="0" step="any" required></label></div>
+                            <div><label>Calories<br><input id="calories" type="number" min="0" step="any" required></label></div>
+                            <div><label>Protein (g)<br><input id="protein" type="number" min="0" step="any" required></label></div>
+                            <div><label>Carbs (g)<br><input id="carbs" type="number" min="0" step="any" required></label></div>
+                            <!-- ** NEW: Fiber input field ** -->
+                            <div><label>Fiber (g)<br><input id="fiber" type="number" value="0" min="0" step="any" required></label></div>
+                            <div><label>Sugar (g)<br><input id="sugar" type="number" min="0" step="any" required></label></div>
+                            <div><label>Saturated Fat (g)<br><input id="saturatedFat" type="number" min="0" step="any" required></label></div>
+                            <div><label>Sodium (mg)<br><input id="sodium" type="number" min="0" step="any" required></label></div>
+                            <div><label>Expiration<br><input id="expiration" type="date" required></label></div>
+                            <div><label>Max Servings / Day<br>
+                                <input id="maxPerDay" type="number" value="99" min="1" title="Set a daily consumption limit. Use a high number like 99 for no limit.">
+                            </label></div>
+                            <div class="shoppable-checkbox"><label>
+                                <input id="shoppable" type="checkbox" checked> Shoppable?
+                                <small>Uncheck for free/temporary items that shouldn't appear on the shopping list.</small>
+                            </label></div>
+                        </div><br>
+                        <button type="submit" id="submitBtn">Add Food</button>
+                        <button type="button" onclick="window.app.resetForm()">Clear</button>
+                    </form>
+                </div>
+                <h2>Current Foods</h2>
+                <table id="foodTable">
+                    <!-- ** NEW: Fiber column header ** -->
+                    <thead><tr><th>Name</th><th>On-Hand</th><th>Cal</th><th>Prot</th><th>Carb</th><th>Fiber</th><th>Expire</th><th>Max/Day</th><th>Shoppable</th><th>Actions</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
-            <div class="action-buttons">
-                <button class="skip-btn" id="skipBtn">Skip Images</button>
-                <button class="clear-btn" id="clearBtn">Reset Everything</button>
-            </div>
-            <div id="modelStatus" class="model-status">Initializing...</div>
         </div>
 
-        <div class="instruction-text">
-            <p>
-                Welcome to the Image Recommender! To use this page, click on the image you like best from each set of four.
-                The recommender learns from your choices and will adapt to your preferences over time.
-                Use the sliders to adjust the training interval (how often the AI model learns) and the exploration pool size (the variety of images it considers).
-            </p>
-        </div>
+        <!-- ============================================================================== -->
+        <!-- TAB 2: UNIFIED PLANNER AND DISTRIBUTOR                                       -->
+        <!-- ============================================================================== -->
+        <div id="planner" class="tab-content" style="display:none;">
+            <div class="container">
 
-        <div class="controls">
-            <div class="control-group">
-                <label>Training Interval</label>
-                <div class="slider-container">
-                    <input type="range" id="trainingInterval" min="1" max="10" value="5">
-                    <span id="trainingValue">5</span>
-                </div>
+                <!-- ** NEW: Collapsible configuration section ** -->
+                <details id="config-section" class="card" open>
+                    <summary><h3>Step 1: Configuration & Generation</h3></summary>
+                    <div class="config-content">
+                        <div class="flex-container">
+                            <div style="flex: 2;">
+                                <h4>Plan Dates & Strength</h4>
+                                <div class="row">
+                                    <label>Start Date</label>
+                                    <input id="startDate" type="date">
+                                </div>
+                                <!-- ** NEW: End Date input restored ** -->
+                                <div class="row">
+                                    <label>End Date</label>
+                                    <input id="endDate" type="date">
+                                </div>
+                                <div class="row">
+                                    <label>Optimization Strength</label>
+                                    <input id="numGenerations" type="number" value="1000" min="10" max="5000" title="Higher numbers take longer but may yield a better plan.">
+                                </div>
+                            </div>
+                            <div style="flex: 3;">
+                                <h4>Daily Average Macro Ranges</h4>
+                                <div class="macro-grid">
+                                    <div><label class="small">Calories (min/max)</label><div class="input-pair"><input id="calMin" type="number" value="1800"><input id="calMax" type="number" value="2200"></div></div>
+                                    <div><label class="small">Carbs (g) (min/max)</label><div class="input-pair"><input id="carbMin" type="number" value="50"><input id="carbMax" type="number" value="400"></div></div>
+                                    <div><label class="small">Sugar (g) (min/max)</label><div class="input-pair"><input id="sugarMin" type="number" value="0"><input id="sugarMax" type="number" value="100"></div></div>
+                                    <div><label class="small">Protein (g) (min/max)</label><div class="input-pair"><input id="proteinMin" type="number" value="50"><input id="proteinMax" type="number" value="200"></div></div>
+                                    <!-- ** NEW: Fiber goal input ** -->
+                                    <div><label class="small">Fiber (g) (min/max)</label><div class="input-pair"><input id="fiberMin" type="number" value="25"><input id="fiberMax" type="number" value="50"></div></div>
+                                    <div><label class="small">Sat. fat (g) (min/max)</label><div class="input-pair"><input id="satMin" type="number" value="0"><input id="satMax" type="number" value="14"></div></div>
+                                    <div><label class="small">Sodium (mg) (min/max)</label><div class="input-pair"><input id="sodiumMin" type="number" value="0"><input id="sodiumMax" type="number" value="1600"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="summary" id="warnings"></div>
+                        <div class="generate-plan-controls">
+                            <label class="shopping-checkbox-label">
+                                <input id="allowShopping" type="checkbox" checked>
+                                Allow Shopping?
+                                <small>Allows the plan to include items not in stock, which will appear on the shopping list.</small>
+                            </label>
+                            <button id="planBtn" class="primary-action" style="padding: 12px 24px; font-size: 16px;">Generate Plan</button>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- ** NEW: Collapsible results and daily plan section ** -->
+                <details id="results-section" class="card">
+                    <summary><h3>Step 2: Plan Results & Daily Adjustments</h3></summary>
+                    <div class="results-content">
+                        <div class="results-header">
+                            <div>
+                                <!-- ** NEW: Placeholders for GA progress and final summary ** -->
+                                <div id="planSummary">No plan generated yet.</div>
+                                <div id="planAveragesContainer" class="plan-averages"></div>
+                            </div>
+                            <!-- ** NEW: Re-optimization controls ** -->
+                            <div class="re-optimize-controls">
+                                <label for="recalcGenerations">Re-Opt. Strength</label>
+                                <input id="recalcGenerations" type="number" value="200" min="10" max="5000">
+                                <button id="recalcBtn" onclick="window.app.recalculatePlan()">Re-Optimize Future</button>
+                            </div>
+                        </div>
+
+                        <div class="flex-container">
+                            <div class="summary-column">
+                                <h4>Shopping List</h4>
+                                <div id="shoppingListContainer"></div>
+                                <h4>Waste Analysis</h4>
+                                <div id="wasteList"></div>
+                                <h4>Actions</h4>
+                                <button id="commitPlanBtn" onclick="window.app.commitPlanToInventory()" style="display:none;">Commit Plan & Update Inventory</button>
+                            </div>
+                            <div class="plan-grid-column">
+                                <div id="plan-grid">
+                                    <!-- The daily meal plan grid will be rendered here by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
-            <div class="control-group">
-                <label>Exploration Pool</label>
-                <div class="slider-container">
-                    <input type="range" id="poolSize" min="4" max="100" value="50">
-                    <span id="poolValue">50</span>
-                </div>
-            </div>
         </div>
-    </div>
+    </main>
 
-    <div class="image-grid" id="imageContainer"></div>
-
-    <!-- Navigation Bar -->
-    <nav class="nav-bar">
-        <button onclick="window.location.href='nathanael'" style="background-color: lightgray;">Nathanael🤠</button>
-        <button onclick="window.location.href='stretch'" style="background-color: lightyellow;">Squishy Cube🟨</button>
-        <button onclick="window.location.href='dots'" style="background-color: lightblue;">Particles🔵</button>
-        <button onclick="window.location.href='ocr'" style="background-color: lightgreen;">OCR🔍</button>
-        <button onclick="window.location.href='invisible'" class="shiny-button">Invisible👤</button>
-        <button onclick="window.location.href='food'" class="fruit-button">Food 🍇</button>
-    </nav>
-
-    <script src="main.js"></script>
-    <script>
-        // Add click tracking for images
-        document.getElementById('imageContainer').addEventListener('click', function(event) {
-            if (event.target.tagName === 'IMG') {
-                // Extract image identifier from src
-                const src = event.target.src;
-                const imageName = src.substring(src.lastIndexOf('/') + 1);
-
-                // Check if window.beam exists before calling it
-                if (typeof window.beam === 'function') {
-                  window.beam(`/custom-events/image-click/${imageName}`);
-                }
-            }
-        });
-    </script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>

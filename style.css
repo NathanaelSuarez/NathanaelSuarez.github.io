@@ -1,0 +1,260 @@
+/* =================================================================== */
+/* 1. ROOT & GENERAL BODY STYLES */
+/* =================================================================== */
+:root {
+    --primary-color: #1976d2;
+    --primary-hover: #1565c0;
+    --secondary-color: #6c757d;
+    --danger-color: #d32f2f;
+    --success-color: #388e3c;
+    --warning-color: #e65100;
+
+    --bg-color: #f4f7f9;
+    --card-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    margin: 0;
+    font-size: 14px;
+}
+
+/* =================================================================== */
+/* 2. LAYOUT & CONTAINER STYLES */
+/* =================================================================== */
+.main-header {
+    background-color: var(--card-bg);
+    padding: 15px 25px;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+h1 { font-size: 24px; margin: 0 0 10px 0; color: var(--primary-color); }
+h2 { font-size: 20px; margin-top: 0; }
+h3 { font-size: 18px; margin: 0; }
+
+main { padding: 20px; }
+.container { max-width: 1400px; margin: 0 auto; }
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.flex-container { display: flex; gap: 20px; align-items: flex-start; }
+.card-container { flex-wrap: wrap; }
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+
+/* =================================================================== */
+/* 3. TAB NAVIGATION */
+/* =================================================================== */
+.tab-navigation { display: flex; gap: 8px; }
+.tab-link {
+    padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid transparent;
+    border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; background-color: transparent;
+    cursor: pointer; transition: all 0.2s ease-in-out;
+}
+.tab-link:hover { background-color: #eef6ff; color: var(--primary-hover); }
+.tab-link.active {
+    color: var(--primary-color); border-color: var(--border-color);
+    border-bottom-color: var(--primary-color); background-color: var(--card-bg);
+}
+.tab-content { padding-top: 20px; }
+
+/* =================================================================== */
+/* 4. COLLAPSIBLE SECTIONS (NEW) */
+/* =================================================================== */
+details > summary {
+    cursor: pointer;
+    list-style: none; /* Hide the default triangle */
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 15px;
+}
+details > summary::-webkit-details-marker { display: none; } /* For Chrome/Safari */
+details > summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 10px;
+    font-size: 12px;
+    transition: transform 0.2s;
+}
+details[open] > summary::before {
+    transform: rotate(90deg);
+}
+details[open] > summary {
+    margin-bottom: 20px;
+}
+.config-content, .results-content {
+    animation: fadeIn 0.5s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* =================================================================== */
+/* 5. FORMS & INPUTS */
+/* =================================================================== */
+label { font-weight: 600; display: block; margin-bottom: 5px; }
+label .small, .small { font-size: 12px; color: var(--text-secondary); font-weight: normal; }
+input[type="text"], input[type="number"], input[type="date"], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px;
+    box-sizing: border-box; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+}
+textarea { font-family: monospace; font-size: 13px; min-height: 120px; }
+button {
+    padding: 8px 16px; background-color: var(--secondary-color); color: #fff;
+    border: none; border-radius: 6px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background-color 0.2s;
+}
+button:hover { opacity: 0.85; }
+button.primary-action, #planBtn, #submitBtn { background-color: var(--primary-color); }
+button.primary-action:hover, #planBtn:hover, #submitBtn:hover { background-color: var(--primary-hover); }
+button.danger { background-color: var(--danger-color); }
+button.success { background-color: var(--success-color); }
+button:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+.form-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+}
+.macro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.input-pair { display: flex; gap: 8px; }
+.shoppable-checkbox {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+}
+.shoppable-checkbox label { font-weight: normal; }
+
+/* =================================================================== */
+/* 6. TABLES */
+/* =================================================================== */
+table { width: 100%; border-collapse: collapse; margin-top: 10px; background: var(--card-bg); }
+th, td { border: 1px solid var(--border-color); padding: 8px 10px; text-align: left; vertical-align: middle; }
+th { background-color: #f8f9fa; font-size: 13px; font-weight: 600; }
+td .actions button { font-size: 12px; padding: 3px 8px; }
+
+/* =================================================================== */
+/* 7. UNIFIED PLANNER LAYOUT (NEW) */
+/* =================================================================== */
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+#planAveragesContainer { margin-top: 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 15px; }
+.macro-average.bad { color: var(--danger-color); }
+.macro-average.good { color: var(--success-color); }
+.re-optimize-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+.re-optimize-controls label { margin-bottom: 0; }
+.re-optimize-controls input { width: 70px; }
+.summary-column { flex: 1; min-width: 280px; }
+.plan-grid-column { flex: 3; min-width: 500px; }
+.summary-column h4 { margin-top: 0; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+
+/* New styles for the generate plan button and shopping checkbox */
+.generate-plan-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px; /* Space between checkbox and button */
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.shopping-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between checkbox input and text */
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.shopping-checkbox-label input {
+    width: auto; /* Prevent checkbox from taking full width */
+}
+
+.shopping-checkbox-label small {
+    font-weight: normal;
+    color: var(--text-secondary);
+    max-width: 250px; /* Limit width of descriptive text */
+}
+
+/* =================================================================== */
+/* 8. DAILY PLAN GRID (ENHANCED) */
+/* =================================================================== */
+#plan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+}
+.day-card {
+    border: 1px solid var(--border-color); border-radius: 8px;
+    background-color: var(--card-bg); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.day-header {
+    display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0;
+}
+.day-header h4 { font-size: 16px; margin: 0; }
+.calorie-count { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.meal-slot { border-top: 1px solid #f7f7f7; padding-top: 8px; }
+.meal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.meal-header h5 { margin: 0; font-size: 14px; font-weight: 600; }
+.meal-header button { font-size: 11px; padding: 3px 8px; }
+.food-list {
+    list-style-type: none; padding: 8px; margin: 0; display: flex;
+    flex-direction: column; gap: 6px; min-height: 40px; border-radius: 6px;
+    background-color: #f8f9fa; transition: background-color 0.2s;
+}
+.food-list.drag-over { background-color: #eaf5ff; outline: 2px dashed var(--primary-color); }
+.food-list li {
+    padding: 5px 8px; background-color: #e9ecef; border-radius: 4px;
+    font-size: 13px; cursor: grab; user-select: none;
+}
+.food-list li.dragging { opacity: 0.5; background-color: var(--primary-color); color: white; }
+
+/* Meal "Completed" State */
+.meal-slot.completed { background-color: #f7f9fa; opacity: 0.65; }
+.meal-slot.completed .food-list { background-color: #f1f2f6; }
+.meal-slot.completed .complete-btn { background-color: var(--success-color); }
+.meal-slot.completed .complete-btn::before { content: '✔ '; }
+
+/* =================================================================== */
+/* 9. RESPONSIVE DESIGN */
+/* =================================================================== */
+@media (max-width: 900px) {
+    .plan-grid-column, .summary-column { min-width: 100%; }
+    #planner .flex-container { flex-direction: column; }
+    .generate-plan-controls { flex-direction: column; gap: 10px; } /* Stack controls on smaller screens */
+}
+@media (max-width: 768px) {
+    body { font-size: 13px; }
+    main { padding: 10px; }
+    h1 { font-size: 20px; }
+    .flex-container, .card-container { flex-direction: column; }
+    .macro-grid { grid-template-columns: 1fr; }
+}

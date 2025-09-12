@@ -1,1 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePortfolio | Nathanael</title>
+    <style>
+        /* --- General Styles --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #fffde7; /* Light cream yellow */
+            color: #000000; /* Black text */
+        }
 
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1, h2, h3, h4 {
+            color: #000000; /* Black headers */
+            margin-bottom: 0.5em;
+        }
+
+        p {
+            margin-bottom: 1em;
+        }
+
+        /* --- Header --- */
+        .header {
+            background-color: #fbc02d; /* Rich medium yellow */
+            color: #000000; /* Black text */
+            padding: 2rem 1rem;
+            text-align: center;
+            border-bottom: 5px solid #424242; /* Dark grey accent */
+        }
+
+        .header h1 {
+            color: #000000;
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        /* --- Tab Navigation --- */
+        .tab-nav {
+            display: flex;
+            background-color: #fff9c4; /* Lighter yellow for nav */
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .tab-link {
+            padding: 15px 25px;
+            cursor: pointer;
+            border: none;
+            background-color: transparent;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #000000;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .tab-link:hover {
+            background-color: #f9fbe7; /* Even lighter yellow for hover */
+        }
+
+        .tab-link.active {
+            background-color: #ffffff;
+            color: #000000;
+            border-bottom: 3px solid #fbc02d; /* Main yellow for active indicator */
+        }
+        
+        /* --- Tab Content --- */
+        .tab-content {
+            display: none;
+            padding: 25px;
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-top: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* --- Artifact Styles --- */
+        .artifact {
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fdfdfd;
+        }
+
+        .artifact h3 {
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+        
+        .artifact-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .pdf-viewer-container {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .pdf-viewer {
+            width: 100%;
+            height: 500px;
+            border: none;
+        }
+        
+        .analysis-reflection-box {
+            background-color: #fff9c4; /* Light yellow for reflection boxes */
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        
+        /* --- Responsive Design --- */
+        @media (max-width: 768px) {
+            .tab-nav {
+                flex-direction: column;
+            }
+            .artifact-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <h1>Nathanael's ePortfolio</h1>
+        <p>Enc 1102 Honors</p>
+    </header>
+
+    <div class="container">
+        <nav class="tab-nav">
+            <button class="tab-link active" onclick="openTab(event, 'home')">Home</button>
+            <button class="tab-link" onclick="openTab(event, 'outcomes')">Learning Outcomes</button>
+            <button class="tab-link" onclick="openTab(event, 'assignments')">Major Assignments</button>
+            <button class="tab-link" onclick="openTab(event, 'activities')">Writing Activities</button>
+        </nav>
+
+        <!-- Home / Cover Letter Tab -->
+        <div id="home" class="tab-content active">
+            <h2>Welcome to My ePortfolio</h2>
+            <p>Sample Text</p>
+            <hr>
+            <h3>Cover Letter / Testimonio</h3>
+            <p>Sample Text</p>
+            <p>Sample Text</p>
+        </div>
+
+        <!-- Student Learning Outcomes Tab -->
+        <div id="outcomes" class="tab-content">
+            <h2>Student Learning Outcomes</h2>
+            <p>Sample Text</p>
+
+            <div class="artifact">
+                <h3>Outcome 1: Rhetorical Knowledge</h3>
+                <p>Sample Text</p>
+                <div class="analysis-reflection-box">
+                    <h4>My Reflection</h4>
+                    <p>Sample Text</p>
+                </div>
+            </div>
+
+            <div class="artifact">
+                <h3>Outcome 2: Writing Processes & Metacognition</h3>
+                <p>Sample Text</p>
+                <div class="analysis-reflection-box">
+                    <h4>My Reflection</h4>
+                    <p>Sample Text</p>
+                </div>
+            </div>
+            
+             <div class="artifact">
+                <h3>Outcome 3: Knowledge of Conventions</h3>
+                <p>Sample Text</p>
+                <div class="analysis-reflection-box">
+                    <h4>My Reflection</h4>
+                    <p>Sample Text</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Major Assignments Tab -->
+        <div id="assignments" class="tab-content">
+            <h2>Major Writing Assignments</h2>
+            <p>Sample Text</p>
+
+            <div class="artifact">
+                <h3>Project 1: Rhetorical Analysis</h3>
+                <p>Sample Text</p>
+                
+                <div class="artifact-container">
+                    <div>
+                        <h4>Draft 1</h4>
+                        <div class="pdf-viewer-container">
+                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Draft 1 of Project 1"></iframe>
+                        </div>
+                    </div>
+                    <div class="analysis-reflection-box">
+                        <h4>Text Analysis & Reflection</h4>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                    </div>
+                </div>
+
+                <div class="artifact-container" style="margin-top: 20px;">
+                    <div>
+                        <h4>Final Draft</h4>
+                         <div class="pdf-viewer-container">
+                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Final Draft of Project 1"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="artifact">
+                <h3>Project 2: Researched Argument</h3>
+                <p>Sample Text</p>
+                 <div class="artifact-container">
+                    <div>
+                        <h4>Final Draft</h4>
+                         <div class="pdf-viewer-container">
+                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Final Draft of Project 2"></iframe>
+                        </div>
+                    </div>
+                    <div class="analysis-reflection-box">
+                        <h4>Text Analysis & Reflection</h4>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Writing Activities Tab -->
+        <div id="activities" class="tab-content">
+            <h2>Writing Activities & Informal Writing</h2>
+            <p>Sample Text</p>
+
+            <div class="artifact">
+                <h3>Activity 1: Peer Review Feedback</h3>
+                <p>Sample Text</p>
+                 <div class="artifact-container">
+                    <div>
+                        <h4>Peer Review Document</h4>
+                         <div class="pdf-viewer-container">
+                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Peer Review Feedback"></iframe>
+                        </div>
+                    </div>
+                    <div class="analysis-reflection-box">
+                        <h4>Reflection</h4>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="artifact">
+                <h3>Activity 2: Discussion Board Post</h3>
+                <p>Sample Text</p>
+                 <div class="artifact-container">
+                    <div>
+                        <h4>Discussion Post</h4>
+                         <div class="pdf-viewer-container">
+                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Discussion Post"></iframe>
+                        </div>
+                    </div>
+                    <div class="analysis-reflection-box">
+                        <h4>Reflection</h4>
+                        <p>Sample Text</p>
+                        <p>Sample Text</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript for Tab functionality
+        function openTab(evt, tabName) {
+            const tabcontent = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            const tablinks = document.getElementsByClassName("tab-link");
+            for (let i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+    </script>
+
+</body>
+</html>

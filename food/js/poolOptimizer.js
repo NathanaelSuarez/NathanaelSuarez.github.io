@@ -6,7 +6,7 @@
 // It does NOT assign items to specific days.
 // ============================================================================== //
 
-import { MS_DAY, MACRO_WEIGHTS, WASTE_PENALTY } from './utils.js';
+import { MS_DAY, MACRO_WEIGHTS, WASTE_PENALTY, URGENCY_PENALTY_FACTOR } from './utils.js';
 
 export default class PoolOptimizer {
     constructor(units, macroGoals, startDate, totalDays, optimizationStrength) {
@@ -16,19 +16,26 @@ export default class PoolOptimizer {
         this.optimizationStrength = optimizationStrength;
         this.macros = Object.keys(macroGoals);
 
-        // Calculate the target totals for the entire period
-        this.targetTotals = {};
+        // --- FIX 1: Calculate MIN and MAX totals, not a midpoint target. ---
+        // This is the key to solving the low-calorie problem. We need to ensure the
+        // pool has enough food to meet the daily minimums, not just an average.
+        this.minTotals = {};
+        this.maxTotals = {};
         this.macros.forEach(macro => {
             const goal = macroGoals[macro];
-            const midPoint = (goal.min + (goal.max === Infinity ? goal.min : goal.max)) / 2;
-            this.targetTotals[macro] = midPoint * totalDays;
+            this.minTotals[macro] = goal.min * totalDays;
+            this.maxTotals[macro] = (goal.max === Infinity) ? Infinity : goal.max * totalDays;
         });
 
-        this.unitExpiryInfo = units.map(unit => ({
-            expiresInPlan: unit.expiration ?
-                (unit.expiration.getTime() - startDate.getTime()) / MS_DAY < totalDays :
-                false
-        }));
+        // --- FIX 2: Calculate detailed expiry info to re-introduce the Urgency Penalty. ---
+        this.unitExpiryInfo = units.map(unit => {
+            const daysUntilExpiry = unit.expiration ?
+                (unit.expiration.getTime() - startDate.getTime()) / MS_DAY : Infinity;
+            return {
+                daysUntilExpiry: daysUntilExpiry,
+                expiresInPlan: daysUntilExpiry < totalDays
+            };
+        });
     }
 
     computeObjective(selection) {
@@ -44,19 +51,37 @@ export default class PoolOptimizer {
             }
         });
 
-        // 1. Macro Deviation Penalty (deviation from period total)
+        // 1. Macro Deviation Penalty (deviation from the TOTAL min/max range)
         this.macros.forEach(macro => {
-            const deviation = currentTotals[macro] - this.targetTotals[macro];
-            const weight = MACRO_WEIGHTS[macro] || 0.1;
-            const normalizer = this.targetTotals[macro] || 1;
-            const normalizedDev = deviation / normalizer;
-            penalty += weight * normalizedDev * normalizedDev;
+            let deviation = 0;
+            // Penalize for being below the total minimum or above the total maximum.
+            if (currentTotals[macro] < this.minTotals[macro]) {
+                deviation = this.minTotals[macro] - currentTotals[macro];
+            } else if (currentTotals[macro] > this.maxTotals[macro]) {
+                deviation = currentTotals[macro] - this.maxTotals[macro];
+            }
+            
+            if (deviation > 0) {
+                const weight = MACRO_WEIGHTS[macro] || 0.1;
+                // Use minTotals for normalization as it's a more stable base than max.
+                const normalizer = this.minTotals[macro] || 1;
+                const normalizedDev = deviation / normalizer;
+                penalty += weight * normalizedDev * normalizedDev;
+            }
         });
 
-        // 2. Waste Penalty (for not selecting on-hand items that will expire)
+        // 2. Waste & Urgency Penalty
         selection.forEach((isSelected, unitIdx) => {
-            if (!isSelected && this.units[unitIdx].type === 'on-hand' && this.unitExpiryInfo[unitIdx].expiresInPlan) {
-                penalty += WASTE_PENALTY;
+            if (!isSelected && this.units[unitIdx].type === 'on-hand') {
+                const unitInfo = this.unitExpiryInfo[unitIdx];
+                if (unitInfo.expiresInPlan) {
+                    // Huge penalty for definite waste
+                    penalty += WASTE_PENALTY;
+                } else if (unitInfo.daysUntilExpiry !== Infinity) {
+                    // Smaller, decaying penalty for "at risk" items
+                    const daysAfterPlan = unitInfo.daysUntilExpiry - this.totalDays + 1;
+                    penalty += URGENCY_PENALTY_FACTOR / daysAfterPlan;
+                }
             }
         });
 

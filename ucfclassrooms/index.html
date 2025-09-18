@@ -1,1 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>University Empty Classroom Finder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 0 15px;
+            background-color: #f9f9f9;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .finder-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .finder-controls label {
+            font-weight: bold;
+        }
+        input[type="time"], select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        #status, #results, #buildingClosingTimes {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-left: 5px solid #3498db;
+            border-radius: 4px;
+        }
+        #results ul, #buildingClosingTimes ul {
+            list-style-type: none;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        #results li, #buildingClosingTimes li {
+            background-color: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        .building-name {
+            font-weight: bold;
+            color: #2980b9;
+        }
+        #sortButtons {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
 
+    <h1>University Empty Classroom Finder</h1>
+
+    <div class="container">
+        <h2>Schedule Data Status</h2>
+        <div id="status">Loading data...</div>
+    </div>
+
+    <div class="container">
+        <h2>Building Closing Times</h2>
+        <p>This is estimated based on the latest class found in each building.</p>
+        <div id="buildingClosingTimes">
+            <p>Waiting for data to load...</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Find Empty Rooms</h2>
+        <p>Select a day and a time frame to find which rooms are available.</p>
+        <div class="finder-controls">
+            <div>
+                <label for="daySelect">Day:</label>
+                <select id="daySelect">
+                    <option value="Mo">Monday</option>
+                    <option value="Tu">Tuesday</option>
+                    <option value="We">Wednesday</option>
+                    <option value="Th">Thursday</option>
+                    <option value="Fr">Friday</option>
+                </select>
+            </div>
+            <div>
+                <label for="startTime">Start Time:</label>
+                <input type="time" id="startTime" value="10:00">
+            </div>
+            <div>
+                <label for="endTime">End Time:</label>
+                <input type="time" id="endTime" value="11:00">
+            </div>
+            <button id="findEmptyBtn">Find Empty Rooms</button>
+        </div>
+        <div id="sortButtons" style="display: none;">
+            <button id="sortByCountBtn">Sort by Most Empty Rooms</button>
+            <button id="sortByPercentBtn">Sort by Highest % Empty</button>
+        </div>
+        <div id="results">
+            <p>Please select a timeframe and click "Find Empty Rooms".</p>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // UI Element References
+    const findEmptyBtn = document.getElementById('findEmptyBtn');
+    const statusDiv = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+    const closingTimesDiv = document.getElementById('buildingClosingTimes');
+    const daySelect = document.getElementById('daySelect');
+    const startTimeInput = document.getElementById('startTime');
+    const endTimeInput = document.getElementById('endTime');
+    const sortButtonsDiv = document.getElementById('sortButtons');
+    const sortByCountBtn = document.getElementById('sortByCountBtn');
+    const sortByPercentBtn = document.getElementById('sortByPercentBtn');
+
+    // Global State
+    let classData = [];
+    let allRooms = new Set();
+    let lastBuildingStats = {};
+
+    // --- Core Data Function ---
+
+    async function fetchData() {
+        try {
+            const response = await fetch('./class_schedule_data.json');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            classData = data;
+            updateFullUI();
+        } catch (error) {
+            console.error("Failed to load class schedule data:", error);
+            statusDiv.textContent = "Error: Could not load class schedule data. Please make sure 'class_schedule_data.json' is available in the same folder as this file.";
+            statusDiv.style.borderColor = '#e74c3c'; // Make error more visible
+        }
+    }
+
+    function updateFullUI() {
+        updateStatus();
+        updateBuildingClosingTimes();
+        // Clear previous results when data changes
+        resultsDiv.innerHTML = '<p>Please select a timeframe and click "Find Empty Rooms".</p>';
+        sortButtonsDiv.style.display = 'none';
+    }
+    
+    // --- UI Update Functions ---
+    
+    function updateStatus() {
+        allRooms = new Set(classData.map(c => c.room));
+        statusDiv.textContent = `Successfully loaded ${classData.length} class schedules across ${allRooms.size} unique rooms.`;
+    }
+
+    function updateBuildingClosingTimes() {
+        if (classData.length === 0) {
+            closingTimesDiv.innerHTML = '<p>No data available to calculate closing times.</p>';
+            return;
+        }
+
+        const buildingTimes = {};
+        classData.forEach(c => {
+            const building = c.room.split(' ')[0];
+            if (!building) return;
+
+            if (!buildingTimes[building] || c.endTime > buildingTimes[building]) {
+                buildingTimes[building] = c.endTime;
+            }
+        });
+        
+        const sortedBuildings = Object.keys(buildingTimes).sort();
+        
+        let html = '<ul>';
+        sortedBuildings.forEach(building => {
+            const closingTime = buildingTimes[building];
+            let [h, m] = closingTime.split(':');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            const displayTime = `${h}:${m} ${ampm}`;
+            
+            html += `<li><span class="building-name">${building}</span><br>${displayTime}</li>`;
+        });
+        html += '</ul>';
+
+        closingTimesDiv.innerHTML = html;
+    }
+    
+    // --- Room Finding and Sorting Logic ---
+
+    function getBuildingStats(emptyRooms) {
+        const buildingStats = {};
+
+        allRooms.forEach(room => {
+            const building = room.split(' ')[0];
+            if (!buildingStats[building]) {
+                buildingStats[building] = { total: 0, empty: 0, emptyRoomsList: [] };
+            }
+            buildingStats[building].total++;
+        });
+
+        emptyRooms.forEach(room => {
+            const building = room.split(' ')[0];
+            if (buildingStats[building]) {
+                buildingStats[building].empty++;
+                buildingStats[building].emptyRoomsList.push(room);
+            }
+        });
+        return buildingStats;
+    }
+    
+    function displaySortedResults(sortedBuildings, stats) {
+        const day = daySelect.value;
+        const userStart = startTimeInput.value;
+        const userEnd = endTimeInput.value;
+        const totalEmpty = sortedBuildings.reduce((acc, b) => acc + stats[b].empty, 0);
+
+        let html = `<h3>Found ${totalEmpty} empty rooms on ${daySelect.options[daySelect.selectedIndex].text} between ${userStart} and ${userEnd}:</h3>`;
+        
+        sortedBuildings.forEach(building => {
+            const stat = stats[building];
+            const percentage = stat.total > 0 ? ((stat.empty / stat.total) * 100).toFixed(1) : 0;
+            if (stat.empty > 0) {
+                html += `<h4>${building} (${stat.empty} / ${stat.total} rooms empty, ${percentage}%)</h4>`;
+                html += '<ul>';
+                stat.emptyRoomsList.sort().forEach(room => {
+                     html += `<li>${room}</li>`;
+                });
+                html += '</ul>';
+            }
+        });
+        
+        resultsDiv.innerHTML = html;
+    }
+    
+    function sortAndDisplayByCount() {
+        const sorted = Object.keys(lastBuildingStats).sort((a, b) => {
+            return lastBuildingStats[b].empty - lastBuildingStats[a].empty;
+        });
+        displaySortedResults(sorted, lastBuildingStats);
+    }
+    
+    function sortAndDisplayByPercentage() {
+        const sorted = Object.keys(lastBuildingStats).sort((a, b) => {
+            const percA = lastBuildingStats[a].total > 0 ? (lastBuildingStats[a].empty / lastBuildingStats[a].total) : 0;
+            const percB = lastBuildingStats[b].total > 0 ? (lastBuildingStats[b].empty / lastBuildingStats[b].total) : 0;
+            return percB - percA;
+        });
+        displaySortedResults(sorted, lastBuildingStats);
+    }
+
+    function findEmptyRooms() {
+        const day = daySelect.value;
+        const userStart = startTimeInput.value;
+        const userEnd = endTimeInput.value;
+
+        if (classData.length === 0) {
+            alert('Class data is not loaded yet. Please wait or check the status.');
+            return;
+        }
+
+        if (!userStart || !userEnd || userStart >= userEnd) {
+            alert('Please select a valid time range where the start time is before the end time.');
+            return;
+        }
+
+        const occupiedRooms = new Set();
+
+        classData.forEach(c => {
+            // Check if the class is on the selected day and overlaps with the user's time range
+            if (c.day === day && userStart < c.endTime && userEnd > c.startTime) {
+                occupiedRooms.add(c.room);
+            }
+        });
+
+        const emptyRooms = [...allRooms].filter(room => !occupiedRooms.has(room)).sort();
+        
+        if (emptyRooms.length > 0) {
+            lastBuildingStats = getBuildingStats(emptyRooms);
+            sortButtonsDiv.style.display = 'block';
+            sortAndDisplayByCount(); // Default sort
+        } else {
+            resultsDiv.innerHTML = `<h3>No empty rooms found for the selected timeframe.</h3>`;
+            sortButtonsDiv.style.display = 'none';
+        }
+    }
+
+    // --- Event Listeners ---
+
+    findEmptyBtn.addEventListener('click', findEmptyRooms);
+    sortByCountBtn.addEventListener('click', sortAndDisplayByCount);
+    sortByPercentBtn.addEventListener('click', sortAndDisplayByPercentage);
+
+    // Initial data load
+    fetchData();
+});
+</script>
+
+</body>
+</html>

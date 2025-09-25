@@ -153,32 +153,40 @@ export default class GeneticAlgorithmPlanner {
     _createGreedyIndividual() {
         const individual = Array(this.numUnits).fill(-1);
         const dailyTotals = Array.from({ length: this.totalDays }, () => ({}));
+    
+        // *** THE FIX: Pre-populate totals for the partial day to guide the greedy algorithm ***
+        if (this.consumedOnPartialDay && this.totalDays > 0) {
+            dailyTotals[0] = { ...this.consumedOnPartialDay };
+        }
+    
         const unitIndices = Array.from({ length: this.numUnits }, (_, i) => i)
             .sort((a, b) => this.unitExpiryInfo[a].daysUntilExpiry - this.unitExpiryInfo[b].daysUntilExpiry);
         
         unitIndices.forEach(unitIdx => {
             const unit = this.units[unitIdx];
-            // *** CHANGE: Only run the greedy placement for on-hand (non-virtual) items. ***
-            // Virtual items will remain at their default -1 (unscheduled) value for the first generation.
             if (unit.isVirtual) {
-                return; // Skip this virtual unit
+                return; // Virtual (shoppable) items are not placed greedily
             }
-
+    
             const range = this.unitExpiryInfo[unitIdx].validDayRange;
             if (range.max < 0) return;
-
+    
             let bestDay = -1, lowestPenaltyIncrease = Infinity;
             for (let day = range.min; day <= range.max; day++) {
-                const oldPenalty = this._calculateDayPenalty(dailyTotals[day] || {});
-                const newDayTotal = { ...(dailyTotals[day] || {}) };
+                const currentDayTotals = dailyTotals[day] || {};
+                const oldPenalty = this._calculateDayPenalty(currentDayTotals);
+    
+                const newDayTotal = { ...currentDayTotals };
                 MACROS.forEach(m => newDayTotal[m] = (newDayTotal[m] || 0) + (unit.nutrients[m] || 0));
+                
                 const penaltyIncrease = this._calculateDayPenalty(newDayTotal) - oldPenalty;
+    
                 if (penaltyIncrease < lowestPenaltyIncrease) {
                     lowestPenaltyIncrease = penaltyIncrease;
                     bestDay = day;
                 }
             }
-
+    
             if (bestDay !== -1) {
                 individual[unitIdx] = bestDay;
                 const finalDayTotal = dailyTotals[bestDay] || {};

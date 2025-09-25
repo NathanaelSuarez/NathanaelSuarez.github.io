@@ -79,30 +79,31 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     summaryEl.textContent = 'Preparing for optimization...';
 
     const planDurationDays = Math.round((endDate.getTime() - startDate.getTime()) / MS_DAY) + 1;
-    const macroGoals = {};
-    const macroIdMap = { calories: 'cal', carbs: 'carb', sugar: 'sugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
-    MACROS.forEach(m => {
-        const idPrefix = macroIdMap[m];
-        macroGoals[m] = { 
-            min: Number(document.getElementById(idPrefix + 'Min').value || 0), 
-            max: Number(document.getElementById(idPrefix + 'Max').value || Infinity) 
-        };
-    });
     
-    // --- *** NEW: Create a unified "units" array with virtual items for shopping *** ---
+    // *** FIX: Use original plan goals for re-optimization, otherwise use UI values. ***
+    const macroGoals = isRecalculation ? options.macroGoals : (() => {
+        const goals = {};
+        const macroIdMap = { calories: 'cal', carbs: 'carb', sugar: 'sugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
+        MACROS.forEach(m => {
+            const idPrefix = macroIdMap[m];
+            goals[m] = { 
+                min: Number(document.getElementById(idPrefix + 'Min').value || 0), 
+                max: Number(document.getElementById(idPrefix + 'Max').value || Infinity) 
+            };
+        });
+        return goals;
+    })();
+    
     let units = [];
-    // 1. Add all on-hand items
     sourceInventory.forEach(item => {
         for (let i = 0; i < item.servings; i++) {
             units.push({ name: item.name, nutrients: item, maxPerDay: item.maxPerDay, expiration: item.expiration, isVirtual: false });
         }
     });
 
-    // 2. If shopping is allowed, add a pool of "virtual" shoppable items
     if (shoppingAllowed) {
-        // This gives the GA up to 15 of each shoppable item to "buy" during the plan.
         const VIRTUAL_SHOPPING_POOL_SIZE = 15; 
-        const masterInventory = state.foodDatabase; // Use master list for all shoppable options
+        const masterInventory = state.foodDatabase;
 
         masterInventory.forEach(item => {
             if (item.shoppable) {
@@ -113,15 +114,9 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         });
     }
 
-    // ==========================================================
-    // RUN THE GENETIC ALGORITHM
-    // ==========================================================
-    // The GA now optimizes on-hand and shoppable items simultaneously.
-    // We pass `shoppingAllowed: false` to the GA constructor because the slow, internal greedy loop is no longer needed.
     const planner = new GeneticAlgorithmPlanner(units, macroGoals, startDate, planDurationDays, gaParams, false, consumedOnPartialDay);
     const bestIndividual = await planner.run(updateProgress);
     
-    // --- Process the final results ---
     const dailySchedule = Array.from({ length: planDurationDays }, () => []);
     const onHandConsumption = {};
     const shoppingListMap = {};
@@ -138,8 +133,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
             }
         }
     });
-    
-    // --- *** REMOVED the slow, post-GA greedy shopping loop. The GA handles it now. *** ---
     
     const shoppingList = Object.entries(shoppingListMap).map(([name, toBuy]) => ({ name, toBuy }));
     const totalConsumption = { ...onHandConsumption };
@@ -176,7 +169,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         return planResult; // Return result for the recalculate function to process
     }
 
-    // For a normal plan, update state and UI directly
     state.setCurrentPlan(planResult);
     populateDistributorFromPlan();
     renderPlanResults(planResult);

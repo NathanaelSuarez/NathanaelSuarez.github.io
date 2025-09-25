@@ -16,18 +16,20 @@ export function addDragDropListeners() {
 
     items.forEach(item => {
         item.addEventListener('dragstart', e => {
-            const list = e.target.closest('.food-list');
+            // --- FIX: Use `item` from closure for guaranteed safety ---
+            const list = item.closest('.food-list');
             const dayIndex = parseInt(list.dataset.dayIndex);
             const mealName = list.dataset.mealName;
-            const itemIndex = parseInt(e.target.dataset.itemIndex);
+            const itemIndex = parseInt(item.dataset.itemIndex);
             
-            const info = { dayIndex, mealName, itemIndex, text: e.target.textContent };
+            const info = { dayIndex, mealName, itemIndex, text: item.textContent };
             state.setDraggedItemInfo(info);
-            e.target.classList.add('dragging');
+            item.classList.add('dragging');
             e.dataTransfer.setData('text/plain', JSON.stringify(info));
         });
-        item.addEventListener('dragend', e => {
-            e.target.classList.remove('dragging');
+        item.addEventListener('dragend', () => {
+            // --- FIX: Use `item` from closure instead of e.target ---
+            item.classList.remove('dragging');
             state.setDraggedItemInfo(null);
         });
     });
@@ -111,6 +113,7 @@ export async function recalculatePlan() {
         return remainingServings > 0 ? { ...foodItem, servings: remainingServings } : null;
     }).filter(Boolean);
     
+    // This line will now work correctly due to the fix in utils.js
     const originalStartDate = parseDateString(state.currentPlan.planParameters.startDate);
     const recalcStartDate = new Date(originalStartDate.getTime() + firstUncompleted.dayIndex * MS_DAY);
     const recalcEndDate = parseDateString(state.currentPlan.planParameters.endDate);

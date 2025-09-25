@@ -1,6 +1,6 @@
 import * as state from './state.js';
 import { MEAL_NAMES } from './utils.js';
-import { toggleMealComplete, addDragDropListeners } from './distributor.js';
+import { addDragDropListeners } from './distributor.js';
 
 export function showTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
@@ -15,6 +15,7 @@ export function renderInventoryTable() {
     state.foodDatabase.sort((a, b) => a.name.localeCompare(b.name));
     state.foodDatabase.forEach((f, i) => {
         const tr = document.createElement('tr');
+        // --- CORRECTED: Removed all inline onclick attributes ---
         tr.innerHTML = `
             <td>${f.name}</td>
             <td>${f.servings}</td>
@@ -26,9 +27,9 @@ export function renderInventoryTable() {
             <td>${f.maxPerDay || 99}</td>
             <td>${f.shoppable ? '✅' : '❌'}</td>
             <td class="actions">
-                <button onclick="window.app.duplicateFood(${i})">Duplicate</button>
-                <button onclick="window.app.editFood(${i})">Edit</button>
-                <button onclick="window.app.deleteFood(${i})">Delete</button>
+                <button>Duplicate</button>
+                <button>Edit</button>
+                <button>Delete</button>
             </td>`;
         tbody.appendChild(tr);
     });
@@ -73,8 +74,6 @@ export function renderPlanResults(plan) {
     }
     document.getElementById('wasteList').innerHTML = wasteHtml || `<div class="good">No on-hand food will be wasted or at risk based on this plan.</div>`;
         
-    document.getElementById('commitPlanBtn').style.display = 'block';
-
     renderPlanAverages();
 }
 
@@ -144,11 +143,12 @@ export function renderDistributorGrid() {
         MEAL_NAMES.forEach(mealName => {
             const meal = dayData.meals[mealName];
             const completedClass = meal?.completed ? 'completed' : '';
+            // --- CORRECTED: Removed the inline onclick attribute ---
             dayHtml += `
                 <div class="meal-slot ${completedClass}">
                     <div class="meal-header">
                         <h5>${mealName}</h5>
-                        <button class="complete-btn" onclick="window.app.toggleMealComplete(${dayIndex}, '${mealName}')">
+                        <button class="complete-btn">
                             ${meal?.completed ? 'Undo' : 'Complete'}
                         </button>
                     </div>

@@ -80,7 +80,7 @@ export default class GeneticAlgorithmPlanner {
     calculateFitness(individual) {
         let totalPenalty = 0;
         const dailyTotals = Array.from({ length: this.totalDays }, () => ({
-            calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0
+            calories: 0, carbs: 0, addedSugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0
         }));
         const dailyFoodCounts = Array.from({ length: this.totalDays }, () => ({}));
         const onHandConsumption = {}; 

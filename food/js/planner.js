@@ -83,7 +83,7 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     // *** FIX: Use original plan goals for re-optimization, otherwise use UI values. ***
     const macroGoals = isRecalculation ? options.macroGoals : (() => {
         const goals = {};
-        const macroIdMap = { calories: 'cal', carbs: 'carb', sugar: 'sugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
+        const macroIdMap = { calories: 'cal', carbs: 'carb', addedSugar: 'addedSugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
         MACROS.forEach(m => {
             const idPrefix = macroIdMap[m];
             goals[m] = { 

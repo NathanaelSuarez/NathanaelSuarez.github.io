@@ -84,7 +84,7 @@ export function renderPlanAverages() {
     }
 
     const averagesContainer = document.getElementById('planAveragesContainer');
-    const totalMacros = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
+    const totalMacros = { calories: 0, carbs: 0, addedSugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     const macros = Object.keys(state.currentPlan.planParameters.originalGoals);
 
@@ -110,9 +110,10 @@ export function renderPlanAverages() {
         const avg = totalMacros[macro] / numDays;
         const goal = state.currentPlan.planParameters.originalGoals[macro];
         const status = (goal && avg >= goal.min && avg <= goal.max) ? 'good' : 'bad';
+        const displayName = macro.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
         html += `<span class="macro-average ${status}" 
                     title="Goal: ${goal?.min ?? 'N/A'}–${goal?.max === Infinity ? '∞' : (goal?.max ?? 'N/A')}">
-                    <strong>${macro}:</strong> ${Math.round(avg)}
+                    <strong>${displayName}:</strong> ${Math.round(avg)}
                 </span>`;
     }
     averagesContainer.innerHTML = html;

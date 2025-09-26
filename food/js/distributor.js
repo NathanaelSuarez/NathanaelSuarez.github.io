@@ -89,7 +89,7 @@ export async function recalculatePlan() {
     }
 
     // Calculate macros consumed from completed meals on the first uncompleted day
-    const consumedOnPartialDay = { calories: 0, carbs: 0, sugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
+    const consumedOnPartialDay = { calories: 0, carbs: 0, addedSugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
     MEAL_NAMES.forEach(mealName => {
         const meal = state.distributorData[firstUncompleted.dayIndex].meals[mealName];
         if (meal?.completed) {

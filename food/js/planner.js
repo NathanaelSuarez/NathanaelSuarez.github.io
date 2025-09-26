@@ -134,9 +134,27 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         }
     });
     
-    const shoppingList = Object.entries(shoppingListMap).map(([name, toBuy]) => ({ name, toBuy }));
+    // Calculate total consumption including both on-hand and virtual items
     const totalConsumption = { ...onHandConsumption };
-    shoppingList.forEach(item => totalConsumption[item.name] = (totalConsumption[item.name] || 0) + item.toBuy);
+    // Add virtual shopping consumption to total consumption
+    Object.entries(shoppingListMap).forEach(([name, count]) => {
+        totalConsumption[name] = (totalConsumption[name] || 0) + count;
+    });
+
+    // Calculate shopping list properly by comparing total needed vs on-hand inventory
+    const shoppingList = [];
+    const masterInventoryMap = new Map(state.foodDatabase.map(item => [item.name, item]));
+
+    Object.entries(totalConsumption).forEach(([name, totalNeeded]) => {
+        const inventoryItem = masterInventoryMap.get(name);
+        if (inventoryItem && inventoryItem.shoppable) {
+            const onHand = inventoryItem.servings || 0;
+            const toBuy = Math.max(0, totalNeeded - onHand);
+            if (toBuy > 0) {
+                shoppingList.push({ name, toBuy });
+            }
+        }
+    });
 
     const wasteAnalysis = { wasted: [], atRisk: [] };
     sourceInventory.forEach(item => {

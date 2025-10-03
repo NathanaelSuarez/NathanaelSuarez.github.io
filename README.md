@@ -2,4 +2,4 @@
 
 
 
-This is my website. I used it to plan my food with a genetic algorithm
+This is my website. It's real and legit

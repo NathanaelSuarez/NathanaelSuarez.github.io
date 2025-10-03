@@ -24,7 +24,8 @@ export function saveFood(e) {
         return;
     }
 
-    if (state.editingIndex === null && state.foodDatabase.some(f => f.name === foodItem.name)) {
+    const existingItemIndex = state.foodDatabase.findIndex(f => f.name === foodItem.name);
+    if (existingItemIndex !== -1 && existingItemIndex !== state.editingIndex) {
         alert(`Food item "${foodItem.name}" already exists. Please choose a different name or edit the existing item.`);
         return;
     }

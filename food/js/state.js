@@ -17,24 +17,62 @@ export function setDraggedItemInfo(info) { draggedItemInfo = info; }
 
 // --- LOCAL STORAGE ---
 
+/**
+ * Safely saves the application state to localStorage.
+ * Uses a custom replacer to ensure Date objects are serialized as YYYY-MM-DD strings.
+ * Saves each part independently — failure in one doesn't wipe others.
+ */
 export function saveState() {
     try {
-        localStorage.setItem('foodPlanner_database_v5', JSON.stringify(foodDatabase));
-        localStorage.setItem('foodPlanner_plan_v5', JSON.stringify(currentPlan));
-        localStorage.setItem('foodPlanner_distributor_v5', JSON.stringify(distributorData));
+        // Serialize inventory
+        const dbJson = JSON.stringify(foodDatabase);
+        
+        // Serialize plan with Date-to-string conversion
+        const planJson = JSON.stringify(currentPlan, (key, value) => {
+            if (value instanceof Date && !isNaN(value)) {
+                return value.toISOString().slice(0, 10); // "YYYY-MM-DD"
+            }
+            return value;
+        });
+        
+        // Serialize distributor
+        const distJson = JSON.stringify(distributorData);
+
+        // Only save if serialization produced valid strings
+        if (dbJson !== undefined) {
+            localStorage.setItem('foodPlanner_database_v5', dbJson);
+        }
+        if (planJson !== undefined) {
+            localStorage.setItem('foodPlanner_plan_v5', planJson);
+        }
+        if (distJson !== undefined) {
+            localStorage.setItem('foodPlanner_distributor_v5', distJson);
+        }
+
     } catch (e) {
-        console.error("Failed to save state:", e);
+        console.error("🚨 Failed to save state:", e);
+        alert("⚠️ Warning: Could not save current state. Your changes may be lost if you refresh or close the tab.");
     }
 }
 
+/**
+ * Loads state from localStorage with defensive checks and type validation.
+ * Converts date strings back to Date objects where needed.
+ */
 export function loadState() {
     // Load Inventory
     const savedDB = localStorage.getItem('foodPlanner_database_v5');
     if (savedDB) {
         try {
-            foodDatabase = JSON.parse(savedDB) || [];
+            const parsed = JSON.parse(savedDB);
+            if (Array.isArray(parsed)) {
+                foodDatabase = parsed;
+            } else {
+                console.warn("Loaded inventory is not an array. Resetting to empty.");
+                foodDatabase = [];
+            }
         } catch (e) {
-            console.error("Failed to load inventory database from storage:", e);
+            console.error("Failed to load inventory database:", e);
             foodDatabase = [];
         }
     }
@@ -43,13 +81,22 @@ export function loadState() {
     const savedPlan = localStorage.getItem('foodPlanner_plan_v5');
     if (savedPlan) {
         try {
-            currentPlan = JSON.parse(savedPlan);
-            if (currentPlan && currentPlan.planParameters) {
-                currentPlan.planParameters.startDate = parseDateString(currentPlan.planParameters.startDate);
-                currentPlan.planParameters.endDate = parseDateString(currentPlan.planParameters.endDate);
+            const parsed = JSON.parse(savedPlan);
+            if (parsed && typeof parsed === 'object') {
+                currentPlan = parsed;
+                // Convert date strings back to Date objects
+                if (currentPlan.planParameters?.startDate) {
+                    currentPlan.planParameters.startDate = parseDateString(currentPlan.planParameters.startDate);
+                }
+                if (currentPlan.planParameters?.endDate) {
+                    currentPlan.planParameters.endDate = parseDateString(currentPlan.planParameters.endDate);
+                }
+            } else {
+                console.warn("Loaded plan is invalid. Ignoring.");
+                currentPlan = null;
             }
         } catch (e) {
-            console.error("Failed to load current plan from storage:", e);
+            console.error("Failed to load current plan:", e);
             currentPlan = null;
         }
     }
@@ -58,9 +105,15 @@ export function loadState() {
     const savedDist = localStorage.getItem('foodPlanner_distributor_v5');
     if (savedDist) {
         try {
-            distributorData = JSON.parse(savedDist) || [];
+            const parsed = JSON.parse(savedDist);
+            if (Array.isArray(parsed)) {
+                distributorData = parsed;
+            } else {
+                console.warn("Loaded distributor data is not an array. Resetting to empty.");
+                distributorData = [];
+            }
         } catch (e) {
-            console.error("Failed to load distributor data from storage:", e);
+            console.error("Failed to load distributor data:", e);
             distributorData = [];
         }
     }

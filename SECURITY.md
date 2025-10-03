@@ -2,4 +2,4 @@
 
 ## Reporting a Vulnerability
 
-Pls put security vulnerabilities on reddit. Ill find it
+If you find a security vulnerability, please put it on reddit. Ill find it

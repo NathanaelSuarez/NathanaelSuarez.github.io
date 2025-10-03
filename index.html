@@ -6,96 +6,25 @@
     <title>Nathanael Suarez</title>
     <link rel="stylesheet" href="styles.css">
 
-    <!-- Beam Analytics -->
-    <script
-      src="https://beamanalytics.b-cdn.net/beam.min.js"
-      data-token="5a624ed3-bd18-4e80-98e6-a401d4373524"
-      async
-    >
-    </script>
     <style>
-        .shiny-button {
-            background: linear-gradient(to bottom, #66b3ff 5%, #0080ff 100%);
-            background-color: #66b3ff;
-            border-radius: 8px;
-            border: 1px solid #004d99;
-            display: inline-block;
-            cursor: pointer;
-            color: #ffffff;
-            font-family: Arial;
-            font-size: 17px;
-            font-weight: bold;
-            padding: 10px 20px;
-            text-decoration: none;
-            text-shadow: 0px 1px 0px #0073e6;
-        }
-
-        .shiny-button:hover {
-            background: linear-gradient(to bottom, #0080ff 5%, #66b3ff 100%);
-            background-color: #0080ff;
-        }
-
-        .shiny-button:active {
-            position: relative;
-            top: 1px;
-        }
-
-        .fruit-button {
-            background-color: #FFDAB9; /* Peach color for a fruit-like background */
-            border: 1px solid #E9967A; /* Light Salmon border */
-            color: #8B4513; /* Saddle Brown text color for contrast */
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 8px;
-        }
-
-        .fruit-button:hover {
-            background-color: #FFA07A; /* Light Salmon on hover */
-        }
-
-        .fruit-button:active {
-            background-color: #FA8072; /* Salmon on active */
-        }
-
         .nav-bar {
             display: flex; /* Enable flexbox for the nav-bar */
             align-items: stretch; /* Make buttons stretch to equal height */
         }
 
-        .nav-bar button:nth-child(1) { /* Nathanael */
-            background-color: #E0E0E0; /* Light Gray */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(2) { /* Squishy Cube */
-            background-color: #FFFFE0; /* Light Yellow */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(3) { /* Particles */
-            background-color: #ADD8E6; /* Light Blue */
-            color: black;
-        }
-
-        .nav-bar button:nth-child(4) { /* OCR */
-            background-color: #90EE90; /* Light Green */
-            color: black;
-        }
         .nav-bar button {
+            background-color: #f0f0f0; /* Consistent background color */
+            color: #333; /* Consistent text color */
+            border: 1px solid #ccc;
             padding: 10px 20px;
             margin: 5px;
-            border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
         }
+
         .nav-bar button:hover {
-            opacity: 0.8; /* সামান্য hover effect */
+            background-color: #e0e0e0; /* Slightly darker on hover */
         }
     </style>
 </head>
@@ -145,29 +74,12 @@
 
     <!-- Navigation Bar -->
     <nav class="nav-bar">
-        <button onclick="window.location.href='nathanael'" style="background-color: lightgray;">Nathanael🤠</button>
-        <button onclick="window.location.href='stretch'" style="background-color: lightyellow;">Squishy Cube🟨</button>
-        <button onclick="window.location.href='dots'" style="background-color: lightblue;">Particles🔵</button>
-        <button onclick="window.location.href='ocr'" style="background-color: lightgreen;">OCR🔍</button>
-        <button onclick="window.location.href='invisible'" class="shiny-button">Invisible👤</button>
-        <button onclick="window.location.href='food'" class="fruit-button">Food 🍇</button>
+        <button onclick="window.location.href='nathanael'">Nathanael🤠</button>
+        <button onclick="window.location.href='cube'">Squishy Cube🟨</button>
+        <button onclick="window.location.href='invisible'">Invisible👤</button>
+        <button onclick="window.location.href='food'">Food 🍇</button>
     </nav>
 
     <script src="main.js"></script>
-    <script>
-        // Add click tracking for images
-        document.getElementById('imageContainer').addEventListener('click', function(event) {
-            if (event.target.tagName === 'IMG') {
-                // Extract image identifier from src
-                const src = event.target.src;
-                const imageName = src.substring(src.lastIndexOf('/') + 1);
-
-                // Check if window.beam exists before calling it
-                if (typeof window.beam === 'function') {
-                  window.beam(`/custom-events/image-click/${imageName}`);
-                }
-            }
-        });
-    </script>
 </body>
 </html>

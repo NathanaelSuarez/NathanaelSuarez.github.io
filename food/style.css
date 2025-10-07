@@ -37,7 +37,9 @@ body {
 
 h1 { font-size: 24px; margin: 0 0 10px 0; color: var(--primary-color); }
 h2 { font-size: 20px; margin-top: 0; }
-h3 { font-size: 18px; margin: 0; }
+h3 { font-size: 18px; margin: 0 0 15px 0; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+h4 { font-size: 16px; margin: 0 0 10px 0; }
+
 
 main { padding: 20px; }
 .container { max-width: 1400px; margin: 0 auto; }
@@ -63,7 +65,7 @@ main { padding: 20px; }
     padding: 8px 16px; font-size: 14px; font-weight: 600; border: 1px solid transparent;
     border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; background-color: transparent;
     cursor: pointer; transition: all 0.2s ease-in-out;
-    color: var(--text-secondary); /* CHANGE: Set default color for inactive tabs */
+    color: var(--text-secondary);
 }
 .tab-link:hover { background-color: #eef6ff; color: var(--primary-hover); }
 .tab-link.active {
@@ -72,37 +74,6 @@ main { padding: 20px; }
 }
 .tab-content { padding-top: 20px; }
 
-/* =================================================================== */
-/* 4. COLLAPSIBLE SECTIONS (NEW) */
-/* =================================================================== */
-details > summary {
-    cursor: pointer;
-    list-style: none; /* Hide the default triangle */
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 15px;
-}
-details > summary::-webkit-details-marker { display: none; } /* For Chrome/Safari */
-details > summary::before {
-    content: '▶';
-    display: inline-block;
-    margin-right: 10px;
-    font-size: 12px;
-    transition: transform 0.2s;
-}
-details[open] > summary::before {
-    transform: rotate(90deg);
-}
-details[open] > summary {
-    margin-bottom: 20px;
-}
-.config-content, .results-content {
-    animation: fadeIn 0.5s ease;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
 
 /* =================================================================== */
 /* 5. FORMS & INPUTS */
@@ -124,8 +95,8 @@ button {
     cursor: pointer; transition: background-color 0.2s;
 }
 button:hover { opacity: 0.85; }
-button.primary-action, #planBtn, #submitBtn { background-color: var(--primary-color); }
-button.primary-action:hover, #planBtn:hover, #submitBtn:hover { background-color: var(--primary-hover); }
+button.primary-action, #submitBtn { background-color: var(--primary-color); }
+button.primary-action:hover, #submitBtn:hover { background-color: var(--primary-hover); }
 button.danger { background-color: var(--danger-color); }
 button.success { background-color: var(--success-color); }
 button:disabled { background-color: #bdc3c7; cursor: not-allowed; }
@@ -151,40 +122,56 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
 /* =================================================================== */
 /* 7. UNIFIED PLANNER LAYOUT (NEW) */
 /* =================================================================== */
-.results-header {
+.planner-layout {
     display: flex;
-    justify-content: space-between;
+    gap: 20px;
     align-items: flex-start;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 15px;
 }
-#planAveragesContainer { margin-top: 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 15px; }
+.config-column {
+    flex: 1;
+    min-width: 320px;
+    position: sticky; /* Make config panel sticky */
+    top: 20px;
+    max-height: calc(100vh - 40px); /* Set max height for scrolling */
+    overflow-y: auto; /* Enable vertical scroll on this column only */
+}
+.results-column {
+    flex: 2.5;
+    min-width: 500px;
+}
+
+#planAveragesContainer { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 15px; }
 .macro-average.bad { color: var(--danger-color); }
 .macro-average.good { color: var(--success-color); }
-.re-optimize-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background-color: #f8f9fa;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-}
-.re-optimize-controls label { margin-bottom: 0; }
-.re-optimize-controls input { width: 70px; }
+
 .summary-column { flex: 1; min-width: 280px; }
-.plan-grid-column { flex: 3; min-width: 500px; }
+
 .summary-column h4 { margin-top: 0; padding-bottom: 5px; border-bottom: 1px solid #eee; }
 
+/* Styles for the new summary grid inside the results card */
+.results-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+
 /* New styles for the generate plan button and shopping checkbox */
-.generate-plan-controls {
+.plan-controls {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.sub-controls {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 20px; /* Space between checkbox and button */
-    flex-wrap: wrap;
-    margin-top: 20px;
+    gap: 15px;
 }
 
 .shopping-checkbox-label {
@@ -193,17 +180,26 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
     gap: 8px; /* Space between checkbox input and text */
     font-weight: 600;
     cursor: pointer;
+    margin-bottom: 0;
+}
+.shopping-checkbox-label input { width: auto; }
+.shopping-checkbox-label small { font-weight: normal; color: var(--text-secondary); }
+
+.strength-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.strength-control label { margin-bottom: 0; white-space: nowrap; }
+.strength-control input { max-width: 90px; }
+
+#updatePlanBtn {
+    width: 100%;
+    padding: 12px 24px;
+    font-size: 16px;
 }
 
-.shopping-checkbox-label input {
-    width: auto; /* Prevent checkbox from taking full width */
-}
-
-.shopping-checkbox-label small {
-    font-weight: normal;
-    color: var(--text-secondary);
-    max-width: 250px; /* Limit width of descriptive text */
-}
 
 /* =================================================================== */
 /* 8. DAILY PLAN GRID (ENHANCED) */
@@ -247,10 +243,23 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
 /* =================================================================== */
 /* 9. RESPONSIVE DESIGN */
 /* =================================================================== */
+@media (max-width: 1100px) {
+    .planner-layout {
+        flex-direction: column;
+    }
+    .config-column {
+        position: static; /* Un-stick the config panel */
+        width: 100%;
+        box-sizing: border-box;
+        max-height: none; /* Remove max-height */
+        overflow-y: visible; /* Remove scroll behavior */
+    }
+}
+
 @media (max-width: 900px) {
     .plan-grid-column, .summary-column { min-width: 100%; }
     #planner .flex-container { flex-direction: column; }
-    .generate-plan-controls { flex-direction: column; gap: 10px; } /* Stack controls on smaller screens */
+    .results-details-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
     body { font-size: 13px; }
@@ -258,4 +267,62 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
     h1 { font-size: 20px; }
     .flex-container, .card-container { flex-direction: column; }
     .macro-grid { grid-template-columns: 1fr; }
+}
+
+/* =================================================================== */
+/* 10. MODAL STYLES (NEW) */
+/* =================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+.modal-content {
+    background: var(--card-bg);
+    padding: 25px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 700px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
+}
+.close-modal {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #aaa;
+}
+.close-modal:hover { color: #333; }
+
+/* =================================================================== */
+/* 11. CUSTOM MEAL ITEM STYLES (NEW) */
+/* =================================================================== */
+.food-list li.custom-meal {
+    background-color: #deafff; /* A light blue to stand out */
+    border-left: 3px solid var(--primary-color);
+    cursor: default; /* Not draggable */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.custom-meal .delete-custom-meal {
+    background: none;
+    border: none;
+    color: var(--danger-color);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 5px;
+}
+.custom-meal .delete-custom-meal:hover {
+    font-weight: bold;
 }

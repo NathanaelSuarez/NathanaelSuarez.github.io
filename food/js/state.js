@@ -6,6 +6,7 @@ export let currentPlan = null;
 export let distributorData = [];
 export let editingIndex = null;
 export let draggedItemInfo = null;
+export let planConfig = {}; // To store persistent config values
 
 // Functions to modify state (if simple assignment isn't enough)
 export function setFoodDatabase(data) { foodDatabase = data; }
@@ -13,6 +14,7 @@ export function setCurrentPlan(data) { currentPlan = data; }
 export function setDistributorData(data) { distributorData = data; }
 export function setEditingIndex(index) { editingIndex = index; }
 export function setDraggedItemInfo(info) { draggedItemInfo = info; }
+export function setPlanConfig(config) { planConfig = config; }
 
 
 // --- LOCAL STORAGE ---
@@ -38,16 +40,14 @@ export function saveState() {
         // Serialize distributor
         const distJson = JSON.stringify(distributorData);
 
+        // Serialize config
+        const configJson = JSON.stringify(planConfig);
+
         // Only save if serialization produced valid strings
-        if (dbJson !== undefined) {
-            localStorage.setItem('foodPlanner_database_v5', dbJson);
-        }
-        if (planJson !== undefined) {
-            localStorage.setItem('foodPlanner_plan_v5', planJson);
-        }
-        if (distJson !== undefined) {
-            localStorage.setItem('foodPlanner_distributor_v5', distJson);
-        }
+        if (dbJson !== undefined) localStorage.setItem('foodPlanner_database_v5', dbJson);
+        if (planJson !== undefined) localStorage.setItem('foodPlanner_plan_v5', planJson);
+        if (distJson !== undefined) localStorage.setItem('foodPlanner_distributor_v5', distJson);
+        if (configJson !== undefined) localStorage.setItem('foodPlanner_config_v5', configJson);
 
     } catch (e) {
         console.error("🚨 Failed to save state:", e);
@@ -115,6 +115,22 @@ export function loadState() {
         } catch (e) {
             console.error("Failed to load distributor data:", e);
             distributorData = [];
+        }
+    }
+    
+    // Load Config
+    const savedConfig = localStorage.getItem('foodPlanner_config_v5');
+    if (savedConfig) {
+        try {
+            const parsed = JSON.parse(savedConfig);
+            if (parsed && typeof parsed === 'object') {
+                planConfig = parsed;
+            } else {
+                planConfig = {};
+            }
+        } catch (e) {
+            console.error("Failed to load plan config:", e);
+            planConfig = {};
         }
     }
 }

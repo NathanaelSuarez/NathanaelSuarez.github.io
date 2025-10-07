@@ -19,13 +19,21 @@ import * as distributor from './distributor.js';
  * Runs once the DOM is fully loaded.
  */
 function initializeApp() {
-    // Set default values for date inputs
-    const today = new Date();
-    document.getElementById('startDate').value = utils.isoDate(today);
-    document.getElementById('endDate').value = utils.isoDate(new Date(today.getTime() + 13 * utils.MS_DAY));
-
-    // Load any saved data
+    // Load any saved data first
     state.loadState();
+    
+    // Set default values for date inputs only if they don't exist in loaded config
+    if (!state.planConfig.startDate) {
+        const today = new Date();
+        document.getElementById('startDate').value = utils.isoDate(today);
+        document.getElementById('endDate').value = utils.isoDate(new Date(today.getTime() + 13 * utils.MS_DAY));
+    }
+
+    // Populate the config form from loaded state
+    ui.populateConfigForm();
+    // Sync the state with the (potentially updated) form values and save
+    state.setPlanConfig(ui.getPlanConfigFromUI());
+    state.saveState();
 
     // Render the initial views based on loaded state
     ui.renderInventoryTable();
@@ -61,8 +69,14 @@ function addEventListeners() {
     document.getElementById('downloadJsonBtn').addEventListener('click', inventory.downloadJSON);
 
     // --- Planner Actions ---
-    document.getElementById('planBtn').addEventListener('click', () => planner.generatePlan());
-    document.getElementById('recalcBtn').addEventListener('click', distributor.recalculatePlan);
+    document.getElementById('updatePlanBtn').addEventListener('click', planner.handlePlanUpdate);
+
+    // --- NEW: Event listeners for config panel to ensure persistence ---
+    const configPanel = document.querySelector('.config-column');
+    configPanel.addEventListener('change', () => {
+        state.setPlanConfig(ui.getPlanConfigFromUI());
+        state.saveState();
+    });
 
     // --- Event Delegation for Dynamic Elements ---
     // Handles clicks on buttons inside the inventory table (Edit, Delete, Duplicate)
@@ -78,19 +92,85 @@ function addEventListeners() {
         else if (button.textContent.includes('Delete')) inventory.deleteFood(index);
     });
     
-    // Handles clicks for 'Complete' buttons in the daily plan grid
+    // Handles clicks for 'Complete' buttons, '+ Custom' buttons, and delete buttons in the daily plan grid
     document.getElementById('plan-grid').addEventListener('click', e => {
-        const button = e.target.closest('.complete-btn');
-        if (!button) return;
-        const list = button.closest('.meal-slot').querySelector('.food-list');
-        const dayIndex = list.dataset.dayIndex;
-        const mealName = list.dataset.mealName;
+        // Handle 'Complete' button clicks
+        const completeBtn = e.target.closest('.complete-btn');
+        if (completeBtn) {
+            const list = completeBtn.closest('.meal-slot').querySelector('.food-list');
+            const dayIndex = list.dataset.dayIndex;
+            const mealName = list.dataset.mealName;
 
-        if (dayIndex !== undefined && mealName) {
-            distributor.toggleMealComplete(parseInt(dayIndex, 10), mealName);
+            if (dayIndex !== undefined && mealName) {
+                distributor.toggleMealComplete(parseInt(dayIndex, 10), mealName);
+            }
+            return; // Stop further processing
+        }
+
+        // Handle '+ Custom' button clicks to open the modal
+        if (e.target.classList.contains('add-custom-btn')) {
+            const dayIndex = e.target.dataset.dayIndex;
+            const mealName = e.target.dataset.mealName;
+            
+            // Populate hidden form fields
+            document.getElementById('customMealDay').value = dayIndex;
+            document.getElementById('customMealSlot').value = mealName;
+            
+            customMealModal.style.display = 'flex';
+            return; // Stop further processing
+        }
+
+        // Handle deleting a custom meal
+        const deleteBtn = e.target.closest('.delete-custom-meal');
+        if (deleteBtn) {
+            const dayIndex = parseInt(deleteBtn.dataset.dayIndex, 10);
+            const mealName = deleteBtn.dataset.mealName;
+            const itemIndex = parseInt(deleteBtn.dataset.itemIndex, 10);
+            distributor.deleteCustomMeal(dayIndex, mealName, itemIndex);
         }
     });
 }
+
+// --- Custom Meal Modal ---
+const customMealModal = document.getElementById('customMealModal');
+const closeModalBtn = customMealModal.querySelector('.close-modal');
+const customMealForm = document.getElementById('customMealForm');
+
+// Close modal logic
+const closeModal = () => {
+    customMealModal.style.display = 'none';
+    customMealForm.reset();
+};
+closeModalBtn.addEventListener('click', closeModal);
+customMealModal.addEventListener('click', e => {
+    if (e.target === customMealModal) {
+        closeModal();
+    }
+});
+
+// Handle custom meal form submission
+customMealForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const dayIndex = parseInt(document.getElementById('customMealDay').value, 10);
+    const mealName = document.getElementById('customMealSlot').value;
+
+    const customMeal = {
+        isCustom: true,
+        name: document.getElementById('customName').value,
+        macros: {
+            calories: parseFloat(document.getElementById('customCalories').value) || 0,
+            protein: parseFloat(document.getElementById('customProtein').value) || 0,
+            carbs: parseFloat(document.getElementById('customCarbs').value) || 0,
+            fiber: parseFloat(document.getElementById('customFiber').value) || 0,
+            addedSugar: parseFloat(document.getElementById('customAddedSugar').value) || 0,
+            saturatedFat: parseFloat(document.getElementById('customSaturatedFat').value) || 0,
+            sodium: parseFloat(document.getElementById('customSodium').value) || 0,
+        }
+    };
+
+    distributor.addCustomMeal(dayIndex, mealName, customMeal);
+    closeModal();
+});
 
 // Kick off the application once the page has loaded
 document.addEventListener('DOMContentLoaded', initializeApp);

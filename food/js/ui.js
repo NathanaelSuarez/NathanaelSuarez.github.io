@@ -15,7 +15,6 @@ export function renderInventoryTable() {
     state.foodDatabase.sort((a, b) => a.name.localeCompare(b.name));
     state.foodDatabase.forEach((f, i) => {
         const tr = document.createElement('tr');
-        // --- CORRECTED: Removed all inline onclick attributes ---
         tr.innerHTML = `
             <td>${f.name}</td>
             <td>${f.servings}</td>
@@ -44,6 +43,53 @@ export function resetForm() {
     document.getElementById('formTitle').textContent = 'Add New Food';
 }
 
+/**
+ * Reads all values from the configuration form and returns them as an object.
+ */
+export function getPlanConfigFromUI() {
+    const macroIdMap = { calories: 'cal', carbs: 'carb', addedSugar: 'addedSugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
+    const macroGoals = {};
+    Object.keys(macroIdMap).forEach(m => {
+        const idPrefix = macroIdMap[m];
+        macroGoals[m] = {
+            min: Number(document.getElementById(idPrefix + 'Min').value || 0),
+            max: Number(document.getElementById(idPrefix + 'Max').value || Infinity)
+        };
+    });
+
+    return {
+        startDate: document.getElementById('startDate').value,
+        endDate: document.getElementById('endDate').value,
+        strength: parseInt(document.getElementById('numGenerations').value, 10),
+        allowShopping: document.getElementById('allowShopping').checked,
+        macros: macroGoals
+    };
+}
+
+/**
+ * Populates the configuration form with values from the state.planConfig object.
+ */
+export function populateConfigForm() {
+    const config = state.planConfig;
+    if (!config || Object.keys(config).length === 0) return;
+
+    if (config.startDate) document.getElementById('startDate').value = config.startDate;
+    if (config.endDate) document.getElementById('endDate').value = config.endDate;
+    if (config.strength) document.getElementById('numGenerations').value = config.strength;
+    if (typeof config.allowShopping === 'boolean') document.getElementById('allowShopping').checked = config.allowShopping;
+
+    if (config.macros) {
+        const macroIdMap = { calories: 'cal', carbs: 'carb', addedSugar: 'addedSugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
+        Object.keys(macroIdMap).forEach(m => {
+            if (config.macros[m]) {
+                const idPrefix = macroIdMap[m];
+                document.getElementById(idPrefix + 'Min').value = config.macros[m].min;
+                document.getElementById(idPrefix + 'Max').value = config.macros[m].max === Infinity ? '' : config.macros[m].max;
+            }
+        });
+    }
+}
+
 export function renderPlanResults(plan) {
     if (!plan || !plan.planParameters) {
         document.getElementById('planSummary').textContent = "No plan data available to display results.";
@@ -57,7 +103,7 @@ export function renderPlanResults(plan) {
 
     let summaryText = `Plan for ${plan.planParameters.duration} days (${plan.planParameters.startDate} to ${plan.planParameters.endDate}).`;
     if (totalWasted > 0) summaryText += ` • <span class="macro-average bad">Wasted: ${totalWasted}</span>`;
-    if (totalAtRisk > 0) summaryText += ` • <span class="macro-average bad" style="color: var(--warning-color);">At Risk: ${totalAtRisk}</span>`;
+    if (totalAtRisk > 0) summaryText += ` • <span class="macro-average" style="color: var(--warning-color);">At Risk: ${totalAtRisk}</span>`;
     document.getElementById('planSummary').innerHTML = summaryText;
     
     const shoppingList = plan.shoppingList || [];
@@ -92,8 +138,8 @@ export function renderPlanAverages() {
         MEAL_NAMES.forEach(mealName => {
             const meal = day.meals[mealName];
             if (meal && meal.items) {
-                meal.items.forEach(itemName => {
-                    const food = foodMap.get(itemName);
+                meal.items.forEach(item => {
+                    const food = (typeof item === 'string') ? foodMap.get(item) : (item.isCustom ? item.macros : null);
                     if (food) {
                         macros.forEach(macro => totalMacros[macro] += food[macro] || 0);
                     }
@@ -124,6 +170,27 @@ export function renderDistributorGrid() {
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     gridDiv.innerHTML = '';
 
+    const completedCounts = new Map();
+    const shoppingMap = new Map();
+
+    if (state.currentPlan) {
+        state.distributorData.forEach(dayData => {
+            MEAL_NAMES.forEach(mealName => {
+                const meal = dayData.meals[mealName];
+                if (meal?.completed) {
+                    (meal.items || []).forEach(itemName => {
+                        if (typeof itemName === 'string') {
+                            completedCounts.set(itemName, (completedCounts.get(itemName) || 0) + 1);
+                        }
+                    });
+                }
+            });
+        });
+        if (state.currentPlan.shoppingList) {
+            state.currentPlan.shoppingList.forEach(item => shoppingMap.set(item.name, item.toBuy));
+        }
+    }
+
     state.distributorData.forEach((dayData, dayIndex) => {
         const dayCard = document.createElement('div');
         dayCard.className = 'day-card';
@@ -132,31 +199,56 @@ export function renderDistributorGrid() {
         MEAL_NAMES.forEach(mealName => {
             const meal = dayData.meals[mealName];
             if (meal && meal.items) {
-                meal.items.forEach(itemName => dayCalories += foodMap.get(itemName)?.calories || 0);
+                meal.items.forEach(item => {
+                    if (typeof item === 'string') {
+                        dayCalories += foodMap.get(item)?.calories || 0;
+                    } else if (item && item.isCustom) {
+                        dayCalories += item.macros.calories;
+                    }
+                });
             }
         });
         
         let dayHtml = `<div class="day-header">
-            <h4>Day ${dayData.day}</h4>
+            <h4>Day ${dayIndex + 1}</h4>
             <span class="calorie-count">${Math.round(dayCalories)} kcal</span>
         </div>`;
 
         MEAL_NAMES.forEach(mealName => {
             const meal = dayData.meals[mealName];
             const completedClass = meal?.completed ? 'completed' : '';
-            // --- CORRECTED: Removed the inline onclick attribute ---
             dayHtml += `
                 <div class="meal-slot ${completedClass}">
                     <div class="meal-header">
                         <h5>${mealName}</h5>
-                        <button class="complete-btn">
-                            ${meal?.completed ? 'Undo' : 'Complete'}
-                        </button>
+                        <div>
+                            <button class="add-custom-btn" data-day-index="${dayIndex}" data-meal-name="${mealName}">+ Custom</button>
+                            <button class="complete-btn">${meal?.completed ? 'Undo' : 'Complete'}</button>
+                        </div>
                     </div>
                     <ul class="food-list" data-day-index="${dayIndex}" data-meal-name="${mealName}">
-                        ${meal?.items.sort().map((item, itemIndex) => `
-                            <li draggable="true" data-item-index="${itemIndex}">${item}</li>
-                        `).join('') || ''}
+                        ${(meal?.items || []).sort().map((item, itemIndex) => {
+                            if (typeof item === 'string') {
+                                let tooltipText = '';
+                                if (state.currentPlan) {
+                                    const foodItem = foodMap.get(item);
+                                    const initialServings = foodItem ? foodItem.servings : 0;
+                                    const purchasedServings = shoppingMap.get(item) || 0;
+                                    const totalAvailable = initialServings + purchasedServings;
+                                    const numCompleted = completedCounts.get(item) || 0;
+                                    const numRemaining = totalAvailable - numCompleted;
+                                    tooltipText = `title="${numCompleted} serving(s) completed. ${numRemaining}/${totalAvailable} total servings remaining."`;
+                                }
+                                return `<li draggable="true" data-item-index="${itemIndex}" ${tooltipText}>${item}</li>`;
+                            } else if (item && item.isCustom) {
+                                const customTooltip = `title="Custom Item: ${item.macros.calories}cal, ${item.macros.protein}p, ${item.macros.carbs}c"`;
+                                return `<li class="custom-meal" ${customTooltip}>
+                                            <span>${item.name}</span>
+                                            <button class="delete-custom-meal" data-day-index="${dayIndex}" data-meal-name="${mealName}" data-item-index="${itemIndex}">&times;</button>
+                                        </li>`;
+                            }
+                            return '';
+                        }).join('')}
                     </ul>
                 </div>`;
         });

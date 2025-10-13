@@ -11,19 +11,24 @@
             line-height: 1.6;
             margin: 0;
             padding: 0;
-            background-color: #fffde7; /* Light cream yellow */
-            color: #000000; /* Black text */
+            background-color: #FFFDE7; /* Light cream yellow background */
+            color: #212121; /* Dark grey text for readability */
         }
 
         .container {
-            max-width: 1100px;
+            max-width: 960px;
             margin: 0 auto;
             padding: 20px;
         }
 
         h1, h2, h3, h4 {
-            color: #000000; /* Black headers */
+            color: #212121; 
             margin-bottom: 0.5em;
+        }
+        
+        h2 {
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
         }
 
         p {
@@ -32,15 +37,14 @@
 
         /* --- Header --- */
         .header {
-            background-color: #fbc02d; /* Rich medium yellow */
-            color: #000000; /* Black text */
+            background-color: #FBC02D; /* Bright, sunny yellow */
+            color: #212121; /* Dark text for contrast */
             padding: 2rem 1rem;
             text-align: center;
-            border-bottom: 5px solid #424242; /* Dark grey accent */
         }
 
         .header h1 {
-            color: #000000;
+            color: #212121;
             margin: 0;
             font-size: 2.5rem;
         }
@@ -54,7 +58,7 @@
         /* --- Tab Navigation --- */
         .tab-nav {
             display: flex;
-            background-color: #fff9c4; /* Lighter yellow for nav */
+            background-color: #FFF9C4; /* Soft pastel yellow for nav */
             border-bottom: 1px solid #e0e0e0;
         }
 
@@ -65,18 +69,18 @@
             background-color: transparent;
             font-size: 1rem;
             font-weight: 500;
-            color: #000000;
+            color: #424242;
             transition: background-color 0.3s, color 0.3s;
         }
 
         .tab-link:hover {
-            background-color: #f9fbe7; /* Even lighter yellow for hover */
+            background-color: #FFFDE7; /* Lighter yellow for hover */
         }
 
         .tab-link.active {
-            background-color: #ffffff;
-            color: #000000;
-            border-bottom: 3px solid #fbc02d; /* Main yellow for active indicator */
+            background-color: #ffffff; /* White for active tab content area */
+            color: #212121;
+            border-bottom: 3px solid #FBC02D; /* Bright yellow accent */
         }
         
         /* --- Tab Content --- */
@@ -84,7 +88,7 @@
             display: none;
             padding: 25px;
             background-color: #ffffff;
-            border: 1px solid #dee2e6;
+            border: 1px solid #e0e0e0;
             border-top: none;
         }
 
@@ -94,51 +98,28 @@
 
         /* --- Artifact Styles --- */
         .artifact {
-            margin-bottom: 40px;
-            padding: 20px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            background-color: #fdfdfd;
-        }
-
-        .artifact h3 {
-            border-bottom: 2px solid #e9ecef;
-            padding-bottom: 10px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
         }
         
-        .artifact-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
-        }
-
         .pdf-viewer-container {
             border: 1px solid #ccc;
             border-radius: 5px;
             overflow: hidden;
+            margin-top: 15px;
         }
 
         .pdf-viewer {
             width: 100%;
-            height: 500px;
+            height: 600px;
             border: none;
-        }
-        
-        .analysis-reflection-box {
-            background-color: #fff9c4; /* Light yellow for reflection boxes */
-            padding: 20px;
-            border-radius: 5px;
-            border: 1px solid #e9ecef;
         }
         
         /* --- Responsive Design --- */
         @media (max-width: 768px) {
             .tab-nav {
                 flex-direction: column;
-            }
-            .artifact-container {
-                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -147,155 +128,50 @@
 
     <header class="header">
         <h1>Nathanael's ePortfolio</h1>
-        <p>Enc 1102 Honors</p>
+        <p>ePortfolio</p>
     </header>
 
     <div class="container">
         <nav class="tab-nav">
             <button class="tab-link active" onclick="openTab(event, 'home')">Home</button>
-            <button class="tab-link" onclick="openTab(event, 'outcomes')">Learning Outcomes</button>
-            <button class="tab-link" onclick="openTab(event, 'assignments')">Major Assignments</button>
-            <button class="tab-link" onclick="openTab(event, 'activities')">Writing Activities</button>
+            <button class="tab-link" onclick="openTab(event, 'generating-inquiry')">Generating Inquiry</button>
+            <button class="tab-link" onclick="openTab(event, 'information-literacy')">Information Literacy</button>
         </nav>
 
-        <!-- Home / Cover Letter Tab -->
+        <!-- Home Tab -->
         <div id="home" class="tab-content active">
             <h2>Welcome to My ePortfolio</h2>
-            <p>Sample Text</p>
-            <hr>
-            <h3>Cover Letter / Testimonio</h3>
-            <p>Sample Text</p>
-            <p>Sample Text</p>
+            <p>This portfolio showcases my work and development across key learning outcomes. Please use the tabs above to navigate through the different sections.</p>
         </div>
 
-        <!-- Student Learning Outcomes Tab -->
-        <div id="outcomes" class="tab-content">
-            <h2>Student Learning Outcomes</h2>
-            <p>Sample Text</p>
-
+        <!-- Generating Inquiry Tab -->
+        <div id="generating-inquiry" class="tab-content">
+            <h2>Outcome 1: Generating Inquiry</h2>
+            <p>
+                I think that to me, Generating Inquiry is the process of turning a general curiosity into a focused and answerable question that can be answered through research. It also involves going from a vague idea to a solid question. This process happened when I was developing the research questions for my first project. My initial interest in the r/aliens subreddit was broad because I just thought that it was interesting how people came to believe conspiracies, and I was curious about government distrust. The "Turning RTs into RQs" activity was helpful, and it helped me get a concrete set of questions to work with. I considered what was actually observable and analyzable within Reddit comments and posts. This helped me get specific researchable questions. The final question I developed "How does ironic content on the r/aliens subreddit contribute to government distrust?" is a direct result of this focused inquiry process. This artifact demonstrates my growth because it shows the exact moment my broad interest was refined into a formal academic question.
+            </p>
             <div class="artifact">
-                <h3>Outcome 1: Rhetorical Knowledge</h3>
-                <p>Sample Text</p>
-                <div class="analysis-reflection-box">
-                    <h4>My Reflection</h4>
-                    <p>Sample Text</p>
-                </div>
-            </div>
-
-            <div class="artifact">
-                <h3>Outcome 2: Writing Processes & Metacognition</h3>
-                <p>Sample Text</p>
-                <div class="analysis-reflection-box">
-                    <h4>My Reflection</h4>
-                    <p>Sample Text</p>
-                </div>
-            </div>
-            
-             <div class="artifact">
-                <h3>Outcome 3: Knowledge of Conventions</h3>
-                <p>Sample Text</p>
-                <div class="analysis-reflection-box">
-                    <h4>My Reflection</h4>
-                    <p>Sample Text</p>
+                <h3>Supporting Artifact</h3>
+                <div class="pdf-viewer-container">
+                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Generating Inquiry"></iframe>
                 </div>
             </div>
         </div>
 
-        <!-- Major Assignments Tab -->
-        <div id="assignments" class="tab-content">
-            <h2>Major Writing Assignments</h2>
-            <p>Sample Text</p>
-
+        <!-- Information Literacy Tab -->
+        <div id="information-literacy" class="tab-content">
+            <h2>Outcome 2: Information Literacy</h2>
+            <p>
+                I think I understand Information Literacy as the ability to evaluate a set of source's relevance, understand their arguments and figure out how they can support my project. It's about ethically and effectively putting sources into conversation with my ideas. My preliminary annotated bibliography, where I found and synthesized two academic sources, is the best artifact to show my progress here because I focused on what made each source useful to me. For example, with a nonacademic article, I identified the concept of irony poisoning becoming sincerity as a useful framework for my analysis, and I recognized that the methodology from the Godwin et al. study, which categorizes different memes into types like "Deception" and "Superiority," could provide to me a structured way for me to analyze the content on r/aliens. This process shows that I am actively evaluating different sources' methods and concepts to make myself a custom research plan, which is the definition of being information literate.
+            </p>
             <div class="artifact">
-                <h3>Project 1: Rhetorical Analysis</h3>
-                <p>Sample Text</p>
-                
-                <div class="artifact-container">
-                    <div>
-                        <h4>Draft 1</h4>
-                        <div class="pdf-viewer-container">
-                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Draft 1 of Project 1"></iframe>
-                        </div>
-                    </div>
-                    <div class="analysis-reflection-box">
-                        <h4>Text Analysis & Reflection</h4>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                    </div>
-                </div>
-
-                <div class="artifact-container" style="margin-top: 20px;">
-                    <div>
-                        <h4>Final Draft</h4>
-                         <div class="pdf-viewer-container">
-                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Final Draft of Project 1"></iframe>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="artifact">
-                <h3>Project 2: Researched Argument</h3>
-                <p>Sample Text</p>
-                 <div class="artifact-container">
-                    <div>
-                        <h4>Final Draft</h4>
-                         <div class="pdf-viewer-container">
-                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Final Draft of Project 2"></iframe>
-                        </div>
-                    </div>
-                    <div class="analysis-reflection-box">
-                        <h4>Text Analysis & Reflection</h4>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                    </div>
+                <h3>Supporting Artifact</h3>
+                <div class="pdf-viewer-container">
+                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Information Literacy"></iframe>
                 </div>
             </div>
         </div>
 
-        <!-- Writing Activities Tab -->
-        <div id="activities" class="tab-content">
-            <h2>Writing Activities & Informal Writing</h2>
-            <p>Sample Text</p>
-
-            <div class="artifact">
-                <h3>Activity 1: Peer Review Feedback</h3>
-                <p>Sample Text</p>
-                 <div class="artifact-container">
-                    <div>
-                        <h4>Peer Review Document</h4>
-                         <div class="pdf-viewer-container">
-                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Peer Review Feedback"></iframe>
-                        </div>
-                    </div>
-                    <div class="analysis-reflection-box">
-                        <h4>Reflection</h4>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="artifact">
-                <h3>Activity 2: Discussion Board Post</h3>
-                <p>Sample Text</p>
-                 <div class="artifact-container">
-                    <div>
-                        <h4>Discussion Post</h4>
-                         <div class="pdf-viewer-container">
-                            <iframe class="pdf-viewer" src="https://chandra.harvard.edu/resources/pubs/lithos/20th_anniv_litho.pdf" title="Discussion Post"></iframe>
-                        </div>
-                    </div>
-                    <div class="analysis-reflection-box">
-                        <h4>Reflection</h4>
-                        <p>Sample Text</p>
-                        <p>Sample Text</p>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>

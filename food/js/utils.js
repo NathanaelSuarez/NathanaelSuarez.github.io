@@ -1,9 +1,14 @@
+import MACRO_DEFINITIONS from './macros.js';
+
 // --- CONSTANTS ---
 
 export const MS_DAY = 24 * 60 * 60 * 1000;
 export const MEAL_NAMES = ["Breakfast", "Lunch", "Dinner", "Snack"];
-export const MACROS = ["calories", "protein", "carbs", "fiber", "addedSugar", "saturatedFat", "sodium"];
-export const MACRO_WEIGHTS = { calories: 1.0, protein: 0.8, carbs: 0.5, fiber: 0.6, sodium: 0.3, saturatedFat: 0.2, addedSugar: 0.2 };
+
+// Dynamically generate MACROS array and MACRO_WEIGHTS object from the config file
+export const MACROS = MACRO_DEFINITIONS.map(m => m.key);
+export const MACRO_WEIGHTS = Object.fromEntries(MACRO_DEFINITIONS.map(m => [m.key, m.weight]));
+
 export const PENALTY_SCALE_FACTOR = 5000;
 export const WASTE_PENALTY = 10000;
 export const URGENCY_PENALTY_FACTOR = 5000; // Note: Not used by GA, but kept for potential future use
@@ -11,6 +16,15 @@ export const LIMIT_VIOLATION_PENALTY = 8000;
 
 
 // --- HELPER FUNCTIONS ---
+
+/**
+ * NEW: Converts a camelCase string to PascalCase.
+ * e.g., "totalFat" -> "TotalFat"
+ */
+export function toPascalCase(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 export function parseDateString(s) {
     // --- FIX: If s is already a Date object, return it immediately. ---

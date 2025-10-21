@@ -308,21 +308,36 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
 /* 11. CUSTOM MEAL ITEM STYLES (NEW) */
 /* =================================================================== */
 .food-list li.custom-meal {
-    background-color: #deafff; /* A light blue to stand out */
-    border-left: 3px solid var(--primary-color);
+    background-color: #e6e0ff; /* A light purple to stand out */
+    border-left: 3px solid #673ab7;
     cursor: default; /* Not draggable */
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
-.custom-meal .delete-custom-meal {
+
+.custom-meal .custom-controls {
+    display: flex;
+    align-items: center;
+}
+
+.custom-meal button {
     background: none;
     border: none;
-    color: var(--danger-color);
     cursor: pointer;
-    font-size: 14px;
     padding: 0 5px;
+    font-size: 16px;
 }
-.custom-meal .delete-custom-meal:hover {
-    font-weight: bold;
+
+.custom-meal .edit-custom-meal {
+    color: var(--primary-color);
+}
+
+.custom-meal .delete-custom-meal {
+    color: var(--danger-color);
+    font-size: 20px;
+}
+
+.custom-meal button:hover {
+    opacity: 0.7;
 }

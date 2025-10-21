@@ -1,6 +1,7 @@
 import * as state from './state.js';
-import { MEAL_NAMES } from './utils.js';
+import { MEAL_NAMES, toPascalCase } from './utils.js';
 import { addDragDropListeners } from './distributor.js';
+import MACRO_DEFINITIONS from './macros.js';
 
 export function showTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
@@ -11,6 +12,9 @@ export function showTab(tabId) {
 
 export function renderInventoryTable() {
     const tbody = document.querySelector('#foodTable tbody');
+    const thead = document.querySelector('#foodTable thead tr');
+    thead.innerHTML = `<th>Name</th><th>On-Hand</th><th>Cost</th><th>Cal</th><th>Prot</th><th>Carb</th><th>Fiber</th><th>Expire</th><th>Max/Day</th><th>Shoppable</th><th>Actions</th>`;
+
     tbody.innerHTML = '';
     state.foodDatabase.sort((a, b) => a.name.localeCompare(b.name));
     state.foodDatabase.forEach((f, i) => {
@@ -18,6 +22,7 @@ export function renderInventoryTable() {
         tr.innerHTML = `
             <td>${f.name}</td>
             <td>${f.servings}</td>
+            <td>${f.cost ? '$' + Number(f.cost).toFixed(2) : '$0.00'}</td>
             <td>${f.calories}</td>
             <td>${f.protein}</td>
             <td>${f.carbs}</td>
@@ -43,17 +48,71 @@ export function resetForm() {
     document.getElementById('formTitle').textContent = 'Add New Food';
 }
 
-/**
- * Reads all values from the configuration form and returns them as an object.
- */
+export function generateInventoryForm() {
+    const container = document.getElementById('inventory-form-grid');
+    if (!container) return;
+
+    let html = `
+        <div><label>Name<br><input id="name" required></label></div>
+        <div><label>Servings (On-Hand)<br><input id="servings" type="number" value="0" min="0" step="any" required></label></div>
+    `;
+
+    html += MACRO_DEFINITIONS
+        .map(macro => `
+            <div><label>${macro.displayName} (${macro.unit})<br><input id="${macro.key}" type="number" value="0" min="0" step="any" required></label></div>
+        `).join('');
+    
+    html += `
+        <div><label>Expiration<br><input id="expiration" type="date" required></label></div>
+        <div><label>Max Servings / Day<br>
+            <input id="maxPerDay" type="number" value="99" min="1" title="Set a daily consumption limit. Use a high number like 99 for no limit.">
+        </label></div>
+        <div class="shoppable-checkbox"><label>
+            <input id="shoppable" type="checkbox" checked> Shoppable?
+            <small>Uncheck for free/temporary items that shouldn't appear on the shopping list.</small>
+        </label></div>
+    `;
+    container.innerHTML = html;
+}
+
+export function generateCustomMealForm() {
+    const container = document.getElementById('custom-meal-form-grid');
+    if (!container) return;
+
+    let html = `<div><label>Description<br><input id="customName" required></label></div>`;
+    
+    html += MACRO_DEFINITIONS
+        .map(macro => {
+            const inputId = `custom${toPascalCase(macro.key)}`;
+            return `<div><label>${macro.displayName} (${macro.unit})<br><input id="${inputId}" type="number" value="0" min="0" step="any"></label></div>`;
+        }).join('');
+
+    container.innerHTML = html;
+}
+
+
+export function generateMacroInputs() {
+    const container = document.getElementById('macro-grid-container');
+    if (!container) return;
+
+    container.innerHTML = MACRO_DEFINITIONS.map(macro => `
+        <div>
+            <label class="small">${macro.displayName} (${macro.unit}) (min/max)</label>
+            <div class="input-pair">
+                <input id="${macro.idPrefix}Min" type="number" value="${macro.defaultMin}">
+                <input id="${macro.idPrefix}Max" type="number" value="${macro.defaultMax}">
+            </div>
+        </div>
+    `).join('');
+}
+
+
 export function getPlanConfigFromUI() {
-    const macroIdMap = { calories: 'cal', carbs: 'carb', addedSugar: 'addedSugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
     const macroGoals = {};
-    Object.keys(macroIdMap).forEach(m => {
-        const idPrefix = macroIdMap[m];
-        macroGoals[m] = {
-            min: Number(document.getElementById(idPrefix + 'Min').value || 0),
-            max: Number(document.getElementById(idPrefix + 'Max').value || Infinity)
+    MACRO_DEFINITIONS.forEach(macro => {
+        macroGoals[macro.key] = {
+            min: Number(document.getElementById(`${macro.idPrefix}Min`).value || 0),
+            max: Number(document.getElementById(`${macro.idPrefix}Max`).value || Infinity)
         };
     });
 
@@ -66,9 +125,6 @@ export function getPlanConfigFromUI() {
     };
 }
 
-/**
- * Populates the configuration form with values from the state.planConfig object.
- */
 export function populateConfigForm() {
     const config = state.planConfig;
     if (!config || Object.keys(config).length === 0) return;
@@ -79,23 +135,30 @@ export function populateConfigForm() {
     if (typeof config.allowShopping === 'boolean') document.getElementById('allowShopping').checked = config.allowShopping;
 
     if (config.macros) {
-        const macroIdMap = { calories: 'cal', carbs: 'carb', addedSugar: 'addedSugar', protein: 'protein', saturatedFat: 'sat', sodium: 'sodium', fiber: 'fiber' };
-        Object.keys(macroIdMap).forEach(m => {
-            if (config.macros[m]) {
-                const idPrefix = macroIdMap[m];
-                document.getElementById(idPrefix + 'Min').value = config.macros[m].min;
-                document.getElementById(idPrefix + 'Max').value = config.macros[m].max === Infinity ? '' : config.macros[m].max;
+        MACRO_DEFINITIONS.forEach(macro => {
+            if (config.macros[macro.key]) {
+                document.getElementById(`${macro.idPrefix}Min`).value = config.macros[macro.key].min;
+                const maxVal = config.macros[macro.key].max;
+                document.getElementById(`${macro.idPrefix}Max`).value = maxVal === Infinity ? '' : maxVal;
             }
         });
     }
 }
 
 export function renderPlanResults(plan) {
+    const finishPlanContainer = document.getElementById('finishPlanContainer');
+    
     if (!plan || !plan.planParameters) {
-        document.getElementById('planSummary').textContent = "No plan data available to display results.";
+        document.getElementById('planSummary').textContent = "No plan generated yet.";
+        document.getElementById('shoppingListContainer').innerHTML = '';
+        document.getElementById('wasteList').innerHTML = '';
+        document.getElementById('planAveragesContainer').innerHTML = '';
+        if (finishPlanContainer) finishPlanContainer.style.display = 'none';
         return;
     }
     
+    if (finishPlanContainer) finishPlanContainer.style.display = 'block';
+
     const wastedItems = plan.wasteAnalysis?.wasted || [];
     const atRiskItems = plan.wasteAnalysis?.atRisk || [];
     const totalWasted = wastedItems.reduce((sum, item) => sum + item.count, 0);
@@ -130,9 +193,12 @@ export function renderPlanAverages() {
     }
 
     const averagesContainer = document.getElementById('planAveragesContainer');
-    const totalMacros = { calories: 0, carbs: 0, addedSugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0 };
+    const allMacros = MACRO_DEFINITIONS.map(m => m.key);
+    const totalMacros = {};
+    allMacros.forEach(m => totalMacros[m] = 0);
+
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
-    const macros = Object.keys(state.currentPlan.planParameters.originalGoals);
+    const goalMacros = Object.keys(state.currentPlan.planParameters.originalGoals);
 
     state.distributorData.forEach(day => {
         MEAL_NAMES.forEach(mealName => {
@@ -141,7 +207,7 @@ export function renderPlanAverages() {
                 meal.items.forEach(item => {
                     const food = (typeof item === 'string') ? foodMap.get(item) : (item.isCustom ? item.macros : null);
                     if (food) {
-                        macros.forEach(macro => totalMacros[macro] += food[macro] || 0);
+                        allMacros.forEach(macro => totalMacros[macro] += food[macro] || 0);
                     }
                 });
             }
@@ -152,14 +218,17 @@ export function renderPlanAverages() {
     if (numDays === 0) { averagesContainer.innerHTML = ''; return; }
     
     let html = `<strong>Daily Averages:</strong> `;
-    for (const macro of macros) {
-        const avg = totalMacros[macro] / numDays;
-        const goal = state.currentPlan.planParameters.originalGoals[macro];
+    for (const macroDef of MACRO_DEFINITIONS) {
+        const macroKey = macroDef.key;
+        if (!goalMacros.includes(macroKey)) continue;
+
+        const avg = totalMacros[macroKey] / numDays;
+        const goal = state.currentPlan.planParameters.originalGoals[macroKey];
         const status = (goal && avg >= goal.min && avg <= goal.max) ? 'good' : 'bad';
-        const displayName = macro.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+        // <-- CHANGE: Replaced Math.round(avg) with avg.toFixed(2) -->
         html += `<span class="macro-average ${status}" 
                     title="Goal: ${goal?.min ?? 'N/A'}–${goal?.max === Infinity ? '∞' : (goal?.max ?? 'N/A')}">
-                    <strong>${displayName}:</strong> ${Math.round(avg)}
+                    <strong>${macroDef.displayName}:</strong> ${avg.toFixed(2)}
                 </span>`;
     }
     averagesContainer.innerHTML = html;
@@ -169,6 +238,12 @@ export function renderDistributorGrid() {
     const gridDiv = document.getElementById('plan-grid');
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     gridDiv.innerHTML = '';
+    
+    const finishPlanContainer = document.getElementById('finishPlanContainer');
+    if (finishPlanContainer) {
+        finishPlanContainer.style.display = state.distributorData.length > 0 ? 'block' : 'none';
+    }
+
 
     const completedCounts = new Map();
     const shoppingMap = new Map();
@@ -242,9 +317,12 @@ export function renderDistributorGrid() {
                                 return `<li draggable="true" data-item-index="${itemIndex}" ${tooltipText}>${item}</li>`;
                             } else if (item && item.isCustom) {
                                 const customTooltip = `title="Custom Item: ${item.macros.calories}cal, ${item.macros.protein}p, ${item.macros.carbs}c"`;
-                                return `<li class="custom-meal" ${customTooltip}>
+                                return `<li class="custom-meal" draggable="true" data-item-index="${itemIndex}" ${customTooltip}>
                                             <span>${item.name}</span>
-                                            <button class="delete-custom-meal" data-day-index="${dayIndex}" data-meal-name="${mealName}" data-item-index="${itemIndex}">&times;</button>
+                                            <span class="custom-controls">
+                                                <button class="edit-custom-meal" data-day-index="${dayIndex}" data-meal-name="${mealName}" data-item-index="${itemIndex}">&#9998;</button>
+                                                <button class="delete-custom-meal" data-day-index="${dayIndex}" data-meal-name="${mealName}" data-item-index="${itemIndex}">&times;</button>
+                                            </span>
                                         </li>`;
                             }
                             return '';

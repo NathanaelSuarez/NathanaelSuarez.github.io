@@ -1,23 +1,26 @@
 import * as state from './state.js';
 import { renderInventoryTable, resetForm } from './ui.js';
 import { isoDate, MS_DAY } from './utils.js';
+import MACRO_DEFINITIONS from './macros.js';
 
 export function saveFood(e) {
     e.preventDefault();
     const foodItem = {
         name: document.getElementById('name').value.trim(),
         servings: +document.getElementById('servings').value,
-        calories: +document.getElementById('calories').value,
-        protein: +document.getElementById('protein').value,
-        carbs: +document.getElementById('carbs').value,
-        fiber: +document.getElementById('fiber').value,
-        addedSugar: +document.getElementById('addedSugar').value,
-        saturatedFat: +document.getElementById('saturatedFat').value,
-        sodium: +document.getElementById('sodium').value,
         expiration: document.getElementById('expiration').value,
         maxPerDay: parseInt(document.getElementById('maxPerDay').value, 10) || 99,
         shoppable: document.getElementById('shoppable').checked
     };
+
+    // Dynamically add all macro values from the form
+    MACRO_DEFINITIONS.forEach(macro => {
+        const input = document.getElementById(macro.key);
+        if (input) { // Check if input exists (e.g., 'cost' is filtered out)
+            foodItem[macro.key] = +input.value || 0;
+        }
+    });
+
 
     if (!foodItem.name) {
         alert("Food name cannot be empty.");
@@ -74,20 +77,26 @@ export function loadJSON() {
         const arr = JSON.parse(document.getElementById('loadArea').value.trim() || '[]');
         if (!Array.isArray(arr)) throw new Error('Input is not a valid JSON array.');
         
-        const validatedArr = arr.map(item => ({
-            name: String(item.name || `Unnamed Item`).trim(),
-            servings: Math.max(0, Number(item.servings || 0)),
-            calories: Math.max(0, Number(item.calories || 0)),
-            protein: Math.max(0, Number(item.protein || 0)),
-            carbs: Math.max(0, Number(item.carbs || 0)),
-            fiber: Math.max(0, Number(item.fiber || 0)),
-            addedSugar: Math.max(0, Number(item.addedSugar || item.sugar || 0)),
-            saturatedFat: Math.max(0, Number(item.saturatedFat || 0)),
-            sodium: Math.max(0, Number(item.sodium || 0)),
-            expiration: item.expiration ? String(item.expiration) : isoDate(new Date(Date.now() + 365 * MS_DAY)),
-            maxPerDay: parseInt(item.maxPerDay, 10) || 99,
-            shoppable: typeof item.shoppable === 'boolean' ? item.shoppable : true
-        }));
+        const validatedArr = arr.map(item => {
+            const validatedItem = {
+                name: String(item.name || `Unnamed Item`).trim(),
+                servings: Math.max(0, Number(item.servings || 0)),
+                expiration: item.expiration ? String(item.expiration) : isoDate(new Date(Date.now() + 365 * MS_DAY)),
+                maxPerDay: parseInt(item.maxPerDay, 10) || 99,
+                shoppable: typeof item.shoppable === 'boolean' ? item.shoppable : true
+            };
+
+            MACRO_DEFINITIONS.forEach(macro => {
+                // Special case for addedSugar to maintain backwards compatibility with 'sugar' key
+                if (macro.key === 'addedSugar') {
+                    validatedItem[macro.key] = Math.max(0, Number(item.addedSugar || item.sugar || 0));
+                } else {
+                    validatedItem[macro.key] = Math.max(0, Number(item[macro.key] || 0));
+                }
+            });
+
+            return validatedItem;
+        });
         
         state.setFoodDatabase(validatedArr);
         renderInventoryTable();

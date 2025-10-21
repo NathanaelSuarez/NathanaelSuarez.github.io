@@ -11,15 +11,16 @@ import * as state from './state.js';
 import { MS_DAY, MACRO_WEIGHTS, PENALTY_SCALE_FACTOR, WASTE_PENALTY, LIMIT_VIOLATION_PENALTY, MACROS, parseDateString } from './utils.js';
 
 export default class GeneticAlgorithmPlanner {
-    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnPartialDay = null) {
-        this.units = units; // This now contains both on-hand and "virtual" shoppable units
+    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnPartialDay = null, consumedCountsOnPartialDay = {}) {
+        this.units = units;
         this.macroGoals = macroGoals;
         this.startDate = startDate;
         this.totalDays = totalDays;
         this.numUnits = units.length;
         this.params = gaParams;
-        this.allowShopping = allowShopping; // This will be effectively false now, as the logic is removed
+        this.allowShopping = allowShopping;
         this.consumedOnPartialDay = consumedOnPartialDay;
+        this.consumedCountsOnPartialDay = consumedCountsOnPartialDay; // <-- FIX: Store the pre-consumed counts
 
         this.unitExpiryInfo = units.map(unit => {
             const daysUntilExpiry = unit.expiration ?
@@ -31,27 +32,16 @@ export default class GeneticAlgorithmPlanner {
             };
         });
         
-        // --- FIX: THIS IS THE CORRECTED LOGIC ---
-        // Create a map of on-hand food info FOR THE CURRENT PLANNING PERIOD.
-        // It must be built from the on-hand units provided to this specific planning instance
-        // (i.e., the remaining inventory), not from the global state.foodDatabase which
-        // represents the original inventory before any consumption.
         this.foodDbInfo = new Map();
         this.units.forEach((unit, index) => {
-            if (unit.isVirtual) {
-                return; // Skip shoppable ("virtual") items
-            }
-            
+            if (unit.isVirtual) return;
             const existingInfo = this.foodDbInfo.get(unit.name);
             if (existingInfo) {
-                // If we've seen this food item before, just increment its on-hand count
                 existingInfo.onHand += 1;
             } else {
-                // First time seeing this food, create a new entry
-                // We can reuse the expiry info we already calculated
                 const daysUntilExpiry = this.unitExpiryInfo[index].daysUntilExpiry;
                 this.foodDbInfo.set(unit.name, {
-                    onHand: 1, // Start count at 1 for this first unit
+                    onHand: 1,
                     daysUntilExpiry: daysUntilExpiry
                 });
             }
@@ -79,9 +69,7 @@ export default class GeneticAlgorithmPlanner {
 
     calculateFitness(individual) {
         let totalPenalty = 0;
-        const dailyTotals = Array.from({ length: this.totalDays }, () => ({
-            calories: 0, carbs: 0, addedSugar: 0, protein: 0, saturatedFat: 0, sodium: 0, fiber: 0
-        }));
+        const dailyTotals = Array.from({ length: this.totalDays }, () => Object.fromEntries(MACROS.map(key => [key, 0])));
         const dailyFoodCounts = Array.from({ length: this.totalDays }, () => ({}));
         const onHandConsumption = {}; 
         
@@ -102,6 +90,14 @@ export default class GeneticAlgorithmPlanner {
         });
 
         dailyTotals.forEach(dayTotal => totalPenalty += this._calculateDayPenalty(dayTotal));
+
+        // <-- FIX: Add pre-consumed counts to the first day before checking limits -->
+        if (this.totalDays > 0 && this.consumedCountsOnPartialDay) {
+            const firstDayCounts = dailyFoodCounts[0];
+            for (const [foodName, preConsumedCount] of Object.entries(this.consumedCountsOnPartialDay)) {
+                firstDayCounts[foodName] = (firstDayCounts[foodName] || 0) + preConsumedCount;
+            }
+        }
 
         dailyFoodCounts.forEach(dayCounts => {
             for (const [foodName, count] of Object.entries(dayCounts)) {
@@ -139,7 +135,6 @@ export default class GeneticAlgorithmPlanner {
     
     _createRandomIndividual(allowWaste) {
         return this.units.map((unit, unitIdx) => {
-            // *** CHANGE: If the unit is virtual (shoppable), start it as unscheduled (-1). ***
             if (unit.isVirtual) {
                 return -1;
             }
@@ -154,7 +149,6 @@ export default class GeneticAlgorithmPlanner {
         const individual = Array(this.numUnits).fill(-1);
         const dailyTotals = Array.from({ length: this.totalDays }, () => ({}));
     
-        // *** THE FIX: Pre-populate totals for the partial day to guide the greedy algorithm ***
         if (this.consumedOnPartialDay && this.totalDays > 0) {
             dailyTotals[0] = { ...this.consumedOnPartialDay };
         }
@@ -165,7 +159,7 @@ export default class GeneticAlgorithmPlanner {
         unitIndices.forEach(unitIdx => {
             const unit = this.units[unitIdx];
             if (unit.isVirtual) {
-                return; // Virtual (shoppable) items are not placed greedily
+                return; 
             }
     
             const range = this.unitExpiryInfo[unitIdx].validDayRange;
@@ -241,7 +235,7 @@ export default class GeneticAlgorithmPlanner {
         this._initializePopulation();
         for (let gen = 0; gen < this.params.generations; gen++) {
             this.population.sort((a, b) => a.fitness - b.fitness);
-            if (gen % 10 === 0 || gen === this.params.generations - 1) { // Update progress periodically
+            if (gen % 10 === 0 || gen === this.params.generations - 1) { 
                 await onProgress(gen, this.population[0].fitness);
             }
             const newPopulation = [this.population[0]]; // Elitism

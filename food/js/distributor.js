@@ -12,7 +12,7 @@ export function toggleMealComplete(dayIndex, mealName) {
 
 export function addDragDropListeners() {
     const lists = document.querySelectorAll('.food-list');
-    const items = document.querySelectorAll('.food-list li:not(.custom-meal)');
+    const items = document.querySelectorAll('.food-list li[draggable="true"]');
 
     items.forEach(item => {
         item.addEventListener('dragstart', e => {
@@ -70,6 +70,13 @@ export function addDragDropListeners() {
 export function addCustomMeal(dayIndex, mealName, customMeal) {
     if (state.distributorData[dayIndex] && state.distributorData[dayIndex].meals[mealName]) {
         state.distributorData[dayIndex].meals[mealName].items.push(customMeal);
+        renderDistributorGrid();
+    }
+}
+
+export function updateCustomMeal(dayIndex, mealName, itemIndex, updatedMeal) {
+    if (state.distributorData[dayIndex]?.meals[mealName]?.items[itemIndex]) {
+        state.distributorData[dayIndex].meals[mealName].items[itemIndex] = updatedMeal;
         renderDistributorGrid();
     }
 }

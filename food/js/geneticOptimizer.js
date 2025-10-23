@@ -11,7 +11,7 @@ import * as state from './state.js';
 import { MS_DAY, MACRO_WEIGHTS, PENALTY_SCALE_FACTOR, WASTE_PENALTY, LIMIT_VIOLATION_PENALTY, MACROS, parseDateString } from './utils.js';
 
 export default class GeneticAlgorithmPlanner {
-    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnPartialDay = null, consumedCountsOnPartialDay = {}) {
+    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnPartialDay = null) {
         this.units = units;
         this.macroGoals = macroGoals;
         this.startDate = startDate;
@@ -20,7 +20,6 @@ export default class GeneticAlgorithmPlanner {
         this.params = gaParams;
         this.allowShopping = allowShopping;
         this.consumedOnPartialDay = consumedOnPartialDay;
-        this.consumedCountsOnPartialDay = consumedCountsOnPartialDay; // <-- FIX: Store the pre-consumed counts
 
         this.unitExpiryInfo = units.map(unit => {
             const daysUntilExpiry = unit.expiration ?
@@ -91,14 +90,6 @@ export default class GeneticAlgorithmPlanner {
 
         dailyTotals.forEach(dayTotal => totalPenalty += this._calculateDayPenalty(dayTotal));
 
-        // <-- FIX: Add pre-consumed counts to the first day before checking limits -->
-        if (this.totalDays > 0 && this.consumedCountsOnPartialDay) {
-            const firstDayCounts = dailyFoodCounts[0];
-            for (const [foodName, preConsumedCount] of Object.entries(this.consumedCountsOnPartialDay)) {
-                firstDayCounts[foodName] = (firstDayCounts[foodName] || 0) + preConsumedCount;
-            }
-        }
-
         dailyFoodCounts.forEach(dayCounts => {
             for (const [foodName, count] of Object.entries(dayCounts)) {
                 const foodUnitExample = state.foodDatabase.find(f => f.name === foodName);
@@ -128,67 +119,21 @@ export default class GeneticAlgorithmPlanner {
     _initializePopulation() {
         this.population = [];
         for (let i = 0; i < this.params.populationSize; i++) {
-            let individual = (this.params.initStrategy === 'greedy') ? this._createGreedyIndividual() : this._createRandomIndividual(false);
+            // Create a "sparse" individual where almost all items are unassigned (-1).
+            // This provides an "empty start" so the GA's primary task is to add
+            // items to the schedule. A small amount of initial assignment provides
+            // diversity for the algorithm to work with.
+            let individual = this.units.map((unit, unitIdx) => {
+                 // Give each item a very small chance to be assigned on initialization
+                 const assignmentProbability = 0.02; // 2% chance
+                 const range = this.unitExpiryInfo[unitIdx].validDayRange;
+                 if (range.max >= 0 && Math.random() < assignmentProbability) {
+                     return Math.floor(Math.random() * (range.max + 1));
+                 }
+                 return -1; // Default to unassigned
+            });
             this.population.push({ individual, fitness: this.calculateFitness(individual) });
         }
-    }
-    
-    _createRandomIndividual(allowWaste) {
-        return this.units.map((unit, unitIdx) => {
-            if (unit.isVirtual) {
-                return -1;
-            }
-            const range = this.unitExpiryInfo[unitIdx].validDayRange;
-            if (range.max < 0) return -1;
-            const min = allowWaste ? -1 : 0;
-            return Math.floor(Math.random() * (range.max - min + 1)) + min;
-        });
-    }
-
-    _createGreedyIndividual() {
-        const individual = Array(this.numUnits).fill(-1);
-        const dailyTotals = Array.from({ length: this.totalDays }, () => ({}));
-    
-        if (this.consumedOnPartialDay && this.totalDays > 0) {
-            dailyTotals[0] = { ...this.consumedOnPartialDay };
-        }
-    
-        const unitIndices = Array.from({ length: this.numUnits }, (_, i) => i)
-            .sort((a, b) => this.unitExpiryInfo[a].daysUntilExpiry - this.unitExpiryInfo[b].daysUntilExpiry);
-        
-        unitIndices.forEach(unitIdx => {
-            const unit = this.units[unitIdx];
-            if (unit.isVirtual) {
-                return; 
-            }
-    
-            const range = this.unitExpiryInfo[unitIdx].validDayRange;
-            if (range.max < 0) return;
-    
-            let bestDay = -1, lowestPenaltyIncrease = Infinity;
-            for (let day = range.min; day <= range.max; day++) {
-                const currentDayTotals = dailyTotals[day] || {};
-                const oldPenalty = this._calculateDayPenalty(currentDayTotals);
-    
-                const newDayTotal = { ...currentDayTotals };
-                MACROS.forEach(m => newDayTotal[m] = (newDayTotal[m] || 0) + (unit.nutrients[m] || 0));
-                
-                const penaltyIncrease = this._calculateDayPenalty(newDayTotal) - oldPenalty;
-    
-                if (penaltyIncrease < lowestPenaltyIncrease) {
-                    lowestPenaltyIncrease = penaltyIncrease;
-                    bestDay = day;
-                }
-            }
-    
-            if (bestDay !== -1) {
-                individual[unitIdx] = bestDay;
-                const finalDayTotal = dailyTotals[bestDay] || {};
-                MACROS.forEach(m => finalDayTotal[m] = (finalDayTotal[m] || 0) + (unit.nutrients[m] || 0));
-                dailyTotals[bestDay] = finalDayTotal;
-            }
-        });
-        return individual;
     }
     
     _selection() {

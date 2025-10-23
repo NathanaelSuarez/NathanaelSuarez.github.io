@@ -77,9 +77,46 @@ export async function handlePlanUpdate() {
         }
     }
     
-    // Find the first uncompleted point in the plan
+    // --- NEW LOGIC: Handle Past, Uncompleted Meals ---
+    const planStartDate = parseDateString(state.currentPlan.planParameters.startDate);
+    const today = parseDateString(new Date()); // Get today's date, normalized to midnight UTC
+    let todayIndex = -1;
+    if (planStartDate && today >= planStartDate) {
+        todayIndex = Math.round((today.getTime() - planStartDate.getTime()) / MS_DAY);
+    }
+
+    // Check if there are any past days with uncompleted meals
+    let hasUncompletedPastMeals = false;
+    if (todayIndex > 0) {
+        for (let i = 0; i < todayIndex; i++) {
+            if (i >= state.distributorData.length) break;
+            for (const mealName of MEAL_NAMES) {
+                if (!state.distributorData[i].meals[mealName]?.completed) {
+                    hasUncompletedPastMeals = true;
+                    break;
+                }
+            }
+            if (hasUncompletedPastMeals) break;
+        }
+    }
+
+    if (hasUncompletedPastMeals) {
+        const proceed = confirm(
+            "It looks like there are uncompleted meals from past days. \n\n" +
+            "For re-planning, we will assume these were eaten as scheduled. The optimizer will start from today. \n\n" +
+            "Do you want to continue?"
+        );
+        if (!proceed) {
+            planBtn.disabled = false;
+            return;
+        }
+    }
+
+    // --- MODIFIED: Find the first uncompleted point in the plan, STARTING from today ---
     let firstUncompleted = null;
-    for (let i = 0; i < state.distributorData.length; i++) {
+    const searchStartIndex = Math.max(0, todayIndex); // Start searching from today or day 0
+
+    for (let i = searchStartIndex; i < state.distributorData.length; i++) {
         for (const mealName of MEAL_NAMES) {
             if (!state.distributorData[i].meals[mealName]?.completed) {
                 firstUncompleted = { dayIndex: i, mealName: mealName };
@@ -96,19 +133,22 @@ export async function handlePlanUpdate() {
              // Set the starting point to the first new day.
              firstUncompleted = { dayIndex: state.distributorData.length, mealName: MEAL_NAMES[0] };
         } else {
-            alert("All meals are marked complete. Nothing to re-optimize!");
+            alert("All meals from today onwards are marked complete. Nothing to re-optimize!");
             planBtn.disabled = false;
             return;
         }
     }
 
-    // Calculate total consumption from ALL completed meals.
-    // This determines what inventory is truly gone and unavailable for re-planning.
+    // --- MODIFIED: Calculate total consumption from ALL completed meals OR past days ---
     const consumedItemsCount = {};
-    state.distributorData.forEach(day => {
+    state.distributorData.forEach((day, dayIndex) => {
+        // A day is considered "in the past" and its meals consumed by default
+        const isPastDay = todayIndex > -1 && dayIndex < todayIndex; 
+
         MEAL_NAMES.forEach(mealName => {
             const meal = day.meals[mealName];
-            if (meal?.completed) {
+            // Consume if the meal was explicitly completed OR if it's from a past day
+            if (meal && (meal.completed || isPastDay)) {
                 meal.items.forEach(item => {
                     // Only count non-custom, string-based items that are in the inventory
                     if (typeof item === 'string') {
@@ -141,12 +181,13 @@ export async function handlePlanUpdate() {
         return;
     }
 
-    // Calculate macros consumed on the partial day to guide the re-optimizer
+    // Calculate macros and item counts consumed on the partial day to guide the re-optimizer
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     let consumedOnPartialDay = null;
     if (firstUncompleted) {
         const dayOfRecalc = state.distributorData[firstUncompleted.dayIndex];
         const partialDayMacros = Object.fromEntries(MACROS.map(key => [key, 0]));
+        const partialDayItemCounts = {};
         
         MEAL_NAMES.forEach(mealName => {
             const meal = dayOfRecalc.meals[mealName];
@@ -154,6 +195,9 @@ export async function handlePlanUpdate() {
                 meal.items.forEach(item => {
                     const foodData = (typeof item === 'string') ? foodMap.get(item) : (item.isCustom ? item : null);
                     if (foodData) {
+                        if (typeof item === 'string') {
+                            partialDayItemCounts[item] = (partialDayItemCounts[item] || 0) + 1;
+                        }
                         const nutrients = foodData.isCustom ? foodData.macros : foodData;
                         MACROS.forEach(macro => {
                             partialDayMacros[macro] += nutrients[macro] || 0;
@@ -162,7 +206,10 @@ export async function handlePlanUpdate() {
                 });
             }
         });
-        consumedOnPartialDay = partialDayMacros;
+        consumedOnPartialDay = {
+            macros: partialDayMacros,
+            itemCounts: partialDayItemCounts
+        };
     }
 
     alert("Updating the plan based on your new configuration. Please wait...");
@@ -294,20 +341,27 @@ export async function generatePlan(isRecalculation = false, options = {}) {
 
     // This logic applies to a fresh plan generation, to account for pre-added custom meals on day 1.
     if (!isRecalculation && state.distributorData.length > 0 && state.distributorData[0].meals) {
-        const initialDayConsumption = Object.fromEntries(MACROS.map(key => [key, 0]));
+        const initialDayMacros = Object.fromEntries(MACROS.map(key => [key, 0]));
+        const initialDayItemCounts = {};
         MEAL_NAMES.forEach(mealName => {
             const meal = state.distributorData[0].meals[mealName];
             if (meal) {
                 meal.items.forEach(item => {
                     if (item && item.isCustom) {
-                        Object.keys(initialDayConsumption).forEach(macro => {
-                            initialDayConsumption[macro] += item.macros[macro] || 0;
+                        // Custom items don't have a DB entry for maxPerDay, but we track their name
+                        // in case a user manually enters an item that shares a name with a DB item.
+                        initialDayItemCounts[item.name] = (initialDayItemCounts[item.name] || 0) + 1;
+                        Object.keys(initialDayMacros).forEach(macro => {
+                            initialDayMacros[macro] += item.macros[macro] || 0;
                         });
                     }
                 });
             }
         });
-        consumedOnPartialDay = initialDayConsumption;
+        consumedOnPartialDay = {
+            macros: initialDayMacros,
+            itemCounts: initialDayItemCounts
+        };
     }
 
     if (sourceInventory.length === 0 && !shoppingAllowed) {
@@ -353,13 +407,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     });
 
     if (shoppingAllowed) {
-        // OLD: const VIRTUAL_SHOPPING_POOL_SIZE = 100;
-        // Using a fixed, large number created an enormous search space for the
-        // optimizer, leading to slow convergence and poor performance.
-        // NEW: The virtual pool size is now dynamic, based on the plan's duration.
-        // This provides a sufficient but not excessive number of shoppable items,
-        // dramatically reducing the GA's search space and leading to faster,
-        // more effective optimization.
         const VIRTUAL_SHOPPING_POOL_SIZE = planDurationDays;
         const masterInventory = state.foodDatabase;
 

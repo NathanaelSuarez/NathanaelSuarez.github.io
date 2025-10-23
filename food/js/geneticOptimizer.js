@@ -11,7 +11,7 @@ import * as state from './state.js';
 import { MS_DAY, MACRO_WEIGHTS, PENALTY_SCALE_FACTOR, WASTE_PENALTY, LIMIT_VIOLATION_PENALTY, MACROS, parseDateString } from './utils.js';
 
 export default class GeneticAlgorithmPlanner {
-    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnPartialDay = null) {
+    constructor(units, macroGoals, startDate, totalDays, gaParams, allowShopping, consumedOnFirstDay = null) {
         this.units = units;
         this.macroGoals = macroGoals;
         this.startDate = startDate;
@@ -19,7 +19,7 @@ export default class GeneticAlgorithmPlanner {
         this.numUnits = units.length;
         this.params = gaParams;
         this.allowShopping = allowShopping;
-        this.consumedOnPartialDay = consumedOnPartialDay;
+        this.consumedOnFirstDay = consumedOnFirstDay;
 
         this.unitExpiryInfo = units.map(unit => {
             const daysUntilExpiry = unit.expiration ?
@@ -72,8 +72,8 @@ export default class GeneticAlgorithmPlanner {
         const dailyFoodCounts = Array.from({ length: this.totalDays }, () => ({}));
         const onHandConsumption = {}; 
         
-        if (this.consumedOnPartialDay && this.totalDays > 0) {
-            MACROS.forEach(m => dailyTotals[0][m] += this.consumedOnPartialDay[m] || 0);
+        if (this.consumedOnFirstDay && this.totalDays > 0) {
+            MACROS.forEach(m => dailyTotals[0][m] += this.consumedOnFirstDay.macros[m] || 0);
         }
         
         individual.forEach((day, unitIdx) => {
@@ -87,6 +87,13 @@ export default class GeneticAlgorithmPlanner {
                 }
             }
         });
+
+        // Augment the first day's counts with pre-consumed items for maxPerDay checking
+        if (this.consumedOnFirstDay?.itemCounts && this.totalDays > 0) {
+            for (const [foodName, count] of Object.entries(this.consumedOnFirstDay.itemCounts)) {
+                dailyFoodCounts[0][foodName] = (dailyFoodCounts[0][foodName] || 0) + count;
+            }
+        }
 
         dailyTotals.forEach(dayTotal => totalPenalty += this._calculateDayPenalty(dayTotal));
 

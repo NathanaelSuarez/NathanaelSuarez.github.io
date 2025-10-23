@@ -77,87 +77,81 @@ export async function handlePlanUpdate() {
         }
     }
     
-    // --- NEW LOGIC: Handle Past, Uncompleted Meals ---
-    const planStartDate = parseDateString(state.currentPlan.planParameters.startDate);
-    const today = parseDateString(new Date()); // Get today's date, normalized to midnight UTC
-    let todayIndex = -1;
-    if (planStartDate && today >= planStartDate) {
-        todayIndex = Math.round((today.getTime() - planStartDate.getTime()) / MS_DAY);
-    }
-
-    // Check if there are any past days with uncompleted meals
-    let hasUncompletedPastMeals = false;
-    if (todayIndex > 0) {
-        for (let i = 0; i < todayIndex; i++) {
-            if (i >= state.distributorData.length) break;
-            for (const mealName of MEAL_NAMES) {
-                if (!state.distributorData[i].meals[mealName]?.completed) {
-                    hasUncompletedPastMeals = true;
-                    break;
-                }
-            }
-            if (hasUncompletedPastMeals) break;
-        }
-    }
-
-    if (hasUncompletedPastMeals) {
-        const proceed = confirm(
-            "It looks like there are uncompleted meals from past days. \n\n" +
-            "For re-planning, we will assume these were eaten as scheduled. The optimizer will start from today. \n\n" +
-            "Do you want to continue?"
-        );
-        if (!proceed) {
-            planBtn.disabled = false;
-            return;
-        }
-    }
-
-    // --- MODIFIED: Find the first uncompleted point in the plan, STARTING from today ---
-    let firstUncompleted = null;
-    const searchStartIndex = Math.max(0, todayIndex); // Start searching from today or day 0
-
-    for (let i = searchStartIndex; i < state.distributorData.length; i++) {
-        for (const mealName of MEAL_NAMES) {
-            if (!state.distributorData[i].meals[mealName]?.completed) {
-                firstUncompleted = { dayIndex: i, mealName: mealName };
+    // =========================================================================
+    // NEW: FIND THE LAST COMPLETED MEAL TO INFER CONSUMPTION
+    // This makes the re-optimizer robust against forgotten completions.
+    // =========================================================================
+    let lastCompletedPoint = null;
+    // Iterate backwards from the last day and last meal to find the final completed point.
+    for (let i = state.distributorData.length - 1; i >= 0; i--) {
+        const reversedMealNames = [...MEAL_NAMES].reverse();
+        for (const mealName of reversedMealNames) {
+            if (state.distributorData[i].meals[mealName]?.completed) {
+                lastCompletedPoint = { dayIndex: i, mealName };
                 break;
             }
         }
-        if (firstUncompleted) break;
+        if (lastCompletedPoint) break;
     }
 
-    if (!firstUncompleted) {
-        // If everything is complete, but the user wants to ADD days, we can still proceed.
+    const consumedItemsCount = {};
+    let firstUncompleted = null;
+
+    if (lastCompletedPoint) {
+        console.log(`Last completed meal found at Day ${lastCompletedPoint.dayIndex + 1}, ${lastCompletedPoint.mealName}. Assuming all prior meals are also consumed.`);
+        
+        // 1. Calculate implicitly consumed items based on the last completed meal
+        const lastMealIndex = MEAL_NAMES.indexOf(lastCompletedPoint.mealName);
+        for (let dayIndex = 0; dayIndex <= lastCompletedPoint.dayIndex; dayIndex++) {
+            MEAL_NAMES.forEach((mealName, mealIndex) => {
+                // A meal is considered consumed if it's on a day before the last completed day,
+                // OR if it's on the same day but at or before the last completed meal.
+                if (dayIndex < lastCompletedPoint.dayIndex || (dayIndex === lastCompletedPoint.dayIndex && mealIndex <= lastMealIndex)) {
+                    const meal = state.distributorData[dayIndex].meals[mealName];
+                    if (meal?.items) {
+                        meal.items.forEach(item => {
+                            if (typeof item === 'string') {
+                                consumedItemsCount[item] = (consumedItemsCount[item] || 0) + 1;
+                            }
+                        });
+                    }
+                }
+            });
+        }
+
+        // 2. Determine the first uncompleted point for re-planning (the meal after the last completed one)
+        const nextMealIndex = lastMealIndex + 1;
+        if (nextMealIndex < MEAL_NAMES.length) {
+            firstUncompleted = { dayIndex: lastCompletedPoint.dayIndex, mealName: MEAL_NAMES[nextMealIndex] };
+        } else {
+            firstUncompleted = { dayIndex: lastCompletedPoint.dayIndex + 1, mealName: MEAL_NAMES[0] };
+        }
+
+    } else {
+        // Fallback to original logic if no meals are marked complete.
+        console.log("No completed meals found. Finding first uncompleted meal literally.");
+        for (let i = 0; i < state.distributorData.length; i++) {
+            for (const mealName of MEAL_NAMES) {
+                if (!state.distributorData[i].meals[mealName]?.completed) {
+                    firstUncompleted = { dayIndex: i, mealName: mealName };
+                    break;
+                }
+            }
+            if (firstUncompleted) break;
+        }
+    }
+
+    // If no uncompleted point was found (everything is implicitly or explicitly complete)
+    if (!firstUncompleted || firstUncompleted.dayIndex >= state.distributorData.length) {
         if (newDuration > state.distributorData.length) {
              console.log("All existing meals are complete. Extending plan.");
-             // Set the starting point to the first new day.
              firstUncompleted = { dayIndex: state.distributorData.length, mealName: MEAL_NAMES[0] };
         } else {
-            alert("All meals from today onwards are marked complete. Nothing to re-optimize!");
+            alert("All meals are marked as complete or are before the last completed meal. Nothing to re-optimize!");
             planBtn.disabled = false;
             return;
         }
     }
-
-    // --- MODIFIED: Calculate total consumption from ALL completed meals OR past days ---
-    const consumedItemsCount = {};
-    state.distributorData.forEach((day, dayIndex) => {
-        // A day is considered "in the past" and its meals consumed by default
-        const isPastDay = todayIndex > -1 && dayIndex < todayIndex; 
-
-        MEAL_NAMES.forEach(mealName => {
-            const meal = day.meals[mealName];
-            // Consume if the meal was explicitly completed OR if it's from a past day
-            if (meal && (meal.completed || isPastDay)) {
-                meal.items.forEach(item => {
-                    // Only count non-custom, string-based items that are in the inventory
-                    if (typeof item === 'string') {
-                        consumedItemsCount[item] = (consumedItemsCount[item] || 0) + 1;
-                    }
-                });
-            }
-        });
-    });
     
     // Calculate remaining inventory
     const remainingInventory = state.foodDatabase.map(foodItem => {
@@ -184,14 +178,17 @@ export async function handlePlanUpdate() {
     // Calculate macros and item counts consumed on the partial day to guide the re-optimizer
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     let consumedOnPartialDay = null;
-    if (firstUncompleted) {
+    if (firstUncompleted && firstUncompleted.dayIndex < state.distributorData.length) {
         const dayOfRecalc = state.distributorData[firstUncompleted.dayIndex];
         const partialDayMacros = Object.fromEntries(MACROS.map(key => [key, 0]));
         const partialDayItemCounts = {};
-        
-        MEAL_NAMES.forEach(mealName => {
+        const firstUncompletedMealIndex = MEAL_NAMES.indexOf(firstUncompleted.mealName);
+
+        // Sum macros for all meals on the starting day that occurred BEFORE the re-planning point.
+        for (let i = 0; i < firstUncompletedMealIndex; i++) {
+            const mealName = MEAL_NAMES[i];
             const meal = dayOfRecalc.meals[mealName];
-            if (meal?.completed) {
+            if (meal?.items) {
                 meal.items.forEach(item => {
                     const foodData = (typeof item === 'string') ? foodMap.get(item) : (item.isCustom ? item : null);
                     if (foodData) {
@@ -205,11 +202,15 @@ export async function handlePlanUpdate() {
                     }
                 });
             }
-        });
-        consumedOnPartialDay = {
-            macros: partialDayMacros,
-            itemCounts: partialDayItemCounts
-        };
+        }
+
+        // Only create the object if there was actual consumption.
+        if (Object.keys(partialDayItemCounts).length > 0 || Object.values(partialDayMacros).some(v => v > 0)) {
+            consumedOnPartialDay = {
+                macros: partialDayMacros,
+                itemCounts: partialDayItemCounts
+            };
+        }
     }
 
     alert("Updating the plan based on your new configuration. Please wait...");
@@ -242,6 +243,7 @@ export async function handlePlanUpdate() {
                 MEAL_NAMES.forEach(mealName => {
                     const meal = day.meals[mealName];
                     if (meal && !meal.completed) {
+                        // Clear out old, non-custom items from the re-planned section
                         meal.items = meal.items.filter(item => item && item.isCustom);
                     }
                 });
@@ -257,6 +259,7 @@ export async function handlePlanUpdate() {
                     while (!mealAssigned && attempts < MEAL_NAMES.length) {
                         const mealName = MEAL_NAMES[mealIndex % MEAL_NAMES.length];
                         const targetMeal = state.distributorData[targetDayIndex].meals[mealName];
+                        // Add item to the first available (uncompleted) meal slot
                         if (targetMeal && !targetMeal.completed) {
                             targetMeal.items.push(item);
                             mealAssigned = true;
@@ -377,9 +380,9 @@ export async function generatePlan(isRecalculation = false, options = {}) {
 
     const gaParams = {
         generations: optimizationStrength,
-        populationSize: 20,
-        mutationStart: 1,
-        mutationEnd: 0.2
+        populationSize: 50,
+        mutationStart: 0.6,
+        mutationEnd: 0.1
     };
     
     const planDurationDays = Math.round((endDate.getTime() - startDate.getTime()) / MS_DAY) + 1;
@@ -407,6 +410,13 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     });
 
     if (shoppingAllowed) {
+        // OLD: const VIRTUAL_SHOPPING_POOL_SIZE = 100;
+        // Using a fixed, large number created an enormous search space for the
+        // optimizer, leading to slow convergence and poor performance.
+        // NEW: The virtual pool size is now dynamic, based on the plan's duration.
+        // This provides a sufficient but not excessive number of shoppable items,
+        // dramatically reducing the GA's search space and leading to faster,
+        // more effective optimization.
         const VIRTUAL_SHOPPING_POOL_SIZE = planDurationDays;
         const masterInventory = state.foodDatabase;
 

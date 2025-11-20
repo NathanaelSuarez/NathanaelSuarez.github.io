@@ -10,8 +10,7 @@ export function saveFood(e) {
         servings: +document.getElementById('servings').value,
         expiration: document.getElementById('expiration').value,
         maxPerDay: parseInt(document.getElementById('maxPerDay').value, 10) || 99,
-        shoppable: document.getElementById('shoppable').checked,
-        servingsPerPackage: parseInt(document.getElementById('servingsPerPackage').value, 10) || 1, // NEW
+        shoppable: document.getElementById('shoppable').checked
     };
 
     // Dynamically add all macro values from the form
@@ -84,8 +83,7 @@ export function loadJSON() {
                 servings: Math.max(0, Number(item.servings || 0)),
                 expiration: item.expiration ? String(item.expiration) : isoDate(new Date(Date.now() + 365 * MS_DAY)),
                 maxPerDay: parseInt(item.maxPerDay, 10) || 99,
-                shoppable: typeof item.shoppable === 'boolean' ? item.shoppable : true,
-                servingsPerPackage: parseInt(item.servingsPerPackage, 10) || 1, // NEW
+                shoppable: typeof item.shoppable === 'boolean' ? item.shoppable : true
             };
 
             MACRO_DEFINITIONS.forEach(macro => {

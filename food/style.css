@@ -341,12 +341,3 @@ td .actions button { font-size: 12px; padding: 3px 8px; }
 .custom-meal button:hover {
     opacity: 0.7;
 }
-
-/* =================================================================== */
-/* 12. WARNING CLASS FOR SHOPPING LIST */
-/* =================================================================== */
-.warning {
-    color: var(--warning-color);
-    font-size: 11px;
-    font-weight: 600;
-}

@@ -43,7 +43,6 @@ export function resetForm() {
     document.getElementById('foodForm').reset();
     document.getElementById('shoppable').checked = true;
     document.getElementById('maxPerDay').value = '99';
-    document.getElementById('servingsPerPackage').value = '1'; // Reset new field
     state.setEditingIndex(null);
     document.getElementById('submitBtn').textContent = 'Add Food';
     document.getElementById('formTitle').textContent = 'Add New Food';
@@ -65,9 +64,6 @@ export function generateInventoryForm() {
     
     html += `
         <div><label>Expiration<br><input id="expiration" type="date" required></label></div>
-        <div><label>Servings / Package <span class="small">(for shopping)</span><br>
-            <input id="servingsPerPackage" type="number" value="1" min="1" title="For shoppable items, how many servings come in one purchased unit?">
-        </label></div>
         <div><label>Max Servings / Day<br>
             <input id="maxPerDay" type="number" value="99" min="1" title="Set a daily consumption limit. Use a high number like 99 for no limit.">
         </label></div>
@@ -123,7 +119,7 @@ export function getPlanConfigFromUI() {
     return {
         startDate: document.getElementById('startDate').value,
         endDate: document.getElementById('endDate').value,
-        strength: parseInt(document.getElementById('optDuration').value, 10),
+        strength: parseInt(document.getElementById('numGenerations').value, 10),
         allowShopping: document.getElementById('allowShopping').checked,
         macros: macroGoals
     };
@@ -135,7 +131,7 @@ export function populateConfigForm() {
 
     if (config.startDate) document.getElementById('startDate').value = config.startDate;
     if (config.endDate) document.getElementById('endDate').value = config.endDate;
-    if (config.strength) document.getElementById('optDuration').value = config.strength;
+    if (config.strength) document.getElementById('numGenerations').value = config.strength;
     if (typeof config.allowShopping === 'boolean') document.getElementById('allowShopping').checked = config.allowShopping;
 
     if (config.macros) {
@@ -174,29 +170,9 @@ export function renderPlanResults(plan) {
     document.getElementById('planSummary').innerHTML = summaryText;
     
     const shoppingList = plan.shoppingList || [];
-    const shoppingListHtml = shoppingList.length > 0 ?
-        `<table>
-            <thead>
-                <tr>
-                    <th>Item</th>
-                    <th>Packages</th>
-                    <th>Servings/Pkg</th>
-                    <th>Total Servings</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${shoppingList.map(item => `
-                    <tr>
-                        <td>${item.name}</td>
-                        <td>${item.packagesToBuy}</td>
-                        <td>${item.servingsPerPackage}</td>
-                        <td>${item.totalServings}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>` :
+    document.getElementById('shoppingListContainer').innerHTML = shoppingList.length > 0 ?
+        `<table><thead><tr><th>Item</th><th>Servings to Buy</th></tr></thead><tbody>${shoppingList.map(item => `<tr><td>${item.name}</td><td>${item.toBuy}</td></tr>`).join('')}</tbody></table>` :
         `<div class="good">No shopping needed!</div>`;
-    document.getElementById('shoppingListContainer').innerHTML = shoppingListHtml;
     
     let wasteHtml = '';
     if (wastedItems.length > 0) {
@@ -249,6 +225,7 @@ export function renderPlanAverages() {
         const avg = totalMacros[macroKey] / numDays;
         const goal = state.currentPlan.planParameters.originalGoals[macroKey];
         const status = (goal && avg >= goal.min && avg <= goal.max) ? 'good' : 'bad';
+        // <-- CHANGE: Replaced Math.round(avg) with avg.toFixed(2) -->
         html += `<span class="macro-average ${status}" 
                     title="Goal: ${goal?.min ?? 'N/A'}–${goal?.max === Infinity ? '∞' : (goal?.max ?? 'N/A')}">
                     <strong>${macroDef.displayName}:</strong> ${avg.toFixed(2)}
@@ -285,7 +262,7 @@ export function renderDistributorGrid() {
             });
         });
         if (state.currentPlan.shoppingList) {
-            state.currentPlan.shoppingList.forEach(item => shoppingMap.set(item.name, item.totalServings));
+            state.currentPlan.shoppingList.forEach(item => shoppingMap.set(item.name, item.toBuy));
         }
     }
 

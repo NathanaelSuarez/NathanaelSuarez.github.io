@@ -10,24 +10,22 @@ export const MACROS = MACRO_DEFINITIONS.map(m => m.key);
 export const MACRO_WEIGHTS = Object.fromEntries(MACRO_DEFINITIONS.map(m => [m.key, m.weight]));
 
 export const PENALTY_SCALE_FACTOR = 5000;
-export const WASTE_PENALTY = 10000;
-export const URGENCY_PENALTY_FACTOR = 5000; // Note: Not used by GA, but kept for potential future use
+
+// UPDATED: Set to 20000 per your request.
+export const WASTE_PENALTY = 20000; 
+
+export const URGENCY_PENALTY_FACTOR = 5000; 
 export const LIMIT_VIOLATION_PENALTY = 8000;
 
 
 // --- HELPER FUNCTIONS ---
 
-/**
- * NEW: Converts a camelCase string to PascalCase.
- * e.g., "totalFat" -> "TotalFat"
- */
 export function toPascalCase(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 export function parseDateString(s) {
-    // --- FIX: If s is already a Date object, return it immediately. ---
     if (s instanceof Date && !isNaN(s)) return s;
 
     if (!s) return null;

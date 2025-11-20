@@ -1,7 +1,5 @@
 import * as state from './state.js';
-import { renderDistributorGrid, renderPlanResults } from './ui.js';
-import { MEAL_NAMES, parseDateString, MS_DAY } from './utils.js';
-import { generatePlan } from './planner.js';
+import { renderDistributorGrid } from './ui.js';
 
 export function toggleMealComplete(dayIndex, mealName) {
     if (state.distributorData[dayIndex] && state.distributorData[dayIndex].meals[mealName]) {
@@ -10,6 +8,8 @@ export function toggleMealComplete(dayIndex, mealName) {
     }
 }
 
+// ... rest of drag and drop logic is fine ...
+// (ensure existing drag/drop logic is kept)
 export function addDragDropListeners() {
     const lists = document.querySelectorAll('.food-list');
     const items = document.querySelectorAll('.food-list li[draggable="true"]');
@@ -38,6 +38,7 @@ export function addDragDropListeners() {
             const targetDayIndex = parseInt(list.dataset.dayIndex);
             const targetMealName = list.dataset.mealName;
 
+            // Allow drag over if target is NOT completed
             if (state.distributorData[targetDayIndex].meals[targetMealName] && !state.distributorData[targetDayIndex].meals[targetMealName].completed) {
                 list.classList.add('drag-over');
             } else {
@@ -53,14 +54,21 @@ export function addDragDropListeners() {
 
             const targetDayIndex = parseInt(list.dataset.dayIndex);
             const targetMealName = list.dataset.mealName;
+            const targetMeal = state.distributorData[targetDayIndex].meals[targetMealName];
 
-            if (state.distributorData[targetDayIndex].meals[targetMealName] && state.distributorData[targetDayIndex].meals[targetMealName].completed) {
+            // Prevent dropping into completed meal
+            if (targetMeal && targetMeal.completed) {
                 alert("Cannot move food into a completed meal.");
                 return;
             }
             
-            const itemToMove = state.distributorData[state.draggedItemInfo.dayIndex].meals[state.draggedItemInfo.mealName].items.splice(state.draggedItemInfo.itemIndex, 1)[0];
-            state.distributorData[targetDayIndex].meals[targetMealName].items.push(itemToMove);
+            // Check source meal state (optional: prevent dragging OUT of completed meal?)
+            // For now, allow dragging out, but user should toggle complete off first really.
+            // But if they drag out, the re-optimization will just unlock that item. 
+            
+            const sourceMeal = state.distributorData[state.draggedItemInfo.dayIndex].meals[state.draggedItemInfo.mealName];
+            const itemToMove = sourceMeal.items.splice(state.draggedItemInfo.itemIndex, 1)[0];
+            targetMeal.items.push(itemToMove);
 
             renderDistributorGrid();
         });

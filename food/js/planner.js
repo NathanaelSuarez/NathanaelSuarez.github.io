@@ -1,19 +1,8 @@
-// ============================================================================== //
-// PLANNER.JS - MEAL PLAN GENERATION AND MANAGEMENT (GA VERSION)
-// ============================================================================== //
-// This file is responsible for:
-// 1. Orchestrating meal plan generation using the GeneticAlgorithmPlanner.
-// 2. Handling user input for plan parameters via the state.
-// 3. Processing the optimizer's output to create the daily schedule, shopping
-//    list, and waste analysis.
-// 4. Handling both initial plan generation and re-optimization requests.
-// ============================================================================== //
-
 import * as state from './state.js';
+import * as utils from './utils.js'; 
 import { MS_DAY, parseDateString, isoDate, MEAL_NAMES, MACROS } from './utils.js';
 import { renderPlanResults, renderDistributorGrid, renderInventoryTable } from './ui.js';
-import GeneticAlgorithmPlanner from './geneticOptimizer.js';
-
+import { runOptimizerInWorker } from './geneticOptimizer.js';
 
 function populateDistributorFromPlan() {
     if (!state.currentPlan || !state.currentPlan.dailySchedule) return;
@@ -32,10 +21,44 @@ function populateDistributorFromPlan() {
     state.setDistributorData(distributor);
 }
 
-/**
- * Main function to handle plan generation and updates.
- * Acts as a controller for the GeneticAlgorithmPlanner.
- */
+// Helper to calculate waste analysis consistently
+function calculateWasteAnalysis(inventory, consumedMap, startDate, duration) {
+    const wasteAnalysis = { wasted: [], atRisk: [] };
+    
+    inventory.forEach(item => {
+        const consumed = consumedMap[item.name] || 0;
+        const onHand = item.servings;
+        
+        if (onHand <= consumed) return; // All consumed, no waste
+        
+        const expiryDate = parseDateString(item.expiration);
+        if (expiryDate) {
+            const daysUntilExpiry = (expiryDate.getTime() - startDate.getTime()) / MS_DAY;
+            
+            // 1. Definite Waste: Expires BEFORE plan ends
+            if (daysUntilExpiry < duration) {
+                const unscheduled = onHand - consumed;
+                wasteAnalysis.wasted.push({ name: item.name, count: unscheduled });
+            } 
+            // 2. At Risk: Expires AFTER plan ends, but won't all be eaten in time
+            else {
+                const dailyRate = consumed / duration;
+                // "Copy-paste" the plan until expiry: how many would we eat total?
+                const projectedTotalConsumption = dailyRate * daysUntilExpiry;
+                
+                if (onHand > projectedTotalConsumption) {
+                    const amountAtRisk = onHand - projectedTotalConsumption;
+                    wasteAnalysis.atRisk.push({ 
+                        name: item.name, 
+                        count: parseFloat(amountAtRisk.toFixed(1))
+                    });
+                }
+            }
+        }
+    });
+    return wasteAnalysis;
+}
+
 export async function handlePlanUpdate() {
     const planBtn = document.getElementById('updatePlanBtn');
     planBtn.disabled = true;
@@ -50,26 +73,22 @@ export async function handlePlanUpdate() {
         return;
     }
 
-    // --- If no plan exists, generate a fresh one ---
     if (!state.currentPlan || state.distributorData.length === 0) {
         console.log("No existing plan found. Generating a new one.");
-        // Clear any custom meals from a previous, un-generated plan
         state.setDistributorData([]);
         await generatePlan();
         planBtn.disabled = false;
         return;
     }
     
-    // --- Logic for updating an existing plan ---
     console.log("Existing plan found. Proceeding with re-optimization.");
 
-    // --- Date Validation: Check for completed meals in days that would be deleted ---
     const newDuration = Math.round((newEndDate.getTime() - newStartDate.getTime()) / MS_DAY) + 1;
     if (newDuration < state.distributorData.length) {
         for (let i = newDuration; i < state.distributorData.length; i++) {
             for (const mealName of MEAL_NAMES) {
                 if (state.distributorData[i].meals[mealName]?.completed) {
-                    alert(`Error: Cannot shorten the plan because Day ${i + 1} contains a completed meal. Please un-complete the meal or choose a longer date range.`);
+                    alert(`Error: Cannot shorten the plan because Day ${i + 1} contains a completed meal.`);
                     planBtn.disabled = false;
                     return;
                 }
@@ -77,12 +96,7 @@ export async function handlePlanUpdate() {
         }
     }
     
-    // =========================================================================
-    // NEW: FIND THE LAST COMPLETED MEAL TO INFER CONSUMPTION
-    // This makes the re-optimizer robust against forgotten completions.
-    // =========================================================================
     let lastCompletedPoint = null;
-    // Iterate backwards from the last day and last meal to find the final completed point.
     for (let i = state.distributorData.length - 1; i >= 0; i--) {
         const reversedMealNames = [...MEAL_NAMES].reverse();
         for (const mealName of reversedMealNames) {
@@ -98,14 +112,10 @@ export async function handlePlanUpdate() {
     let firstUncompleted = null;
 
     if (lastCompletedPoint) {
-        console.log(`Last completed meal found at Day ${lastCompletedPoint.dayIndex + 1}, ${lastCompletedPoint.mealName}. Assuming all prior meals are also consumed.`);
-        
-        // 1. Calculate implicitly consumed items based on the last completed meal
+        console.log(`Last completed meal found at Day ${lastCompletedPoint.dayIndex + 1}.`);
         const lastMealIndex = MEAL_NAMES.indexOf(lastCompletedPoint.mealName);
         for (let dayIndex = 0; dayIndex <= lastCompletedPoint.dayIndex; dayIndex++) {
             MEAL_NAMES.forEach((mealName, mealIndex) => {
-                // A meal is considered consumed if it's on a day before the last completed day,
-                // OR if it's on the same day but at or before the last completed meal.
                 if (dayIndex < lastCompletedPoint.dayIndex || (dayIndex === lastCompletedPoint.dayIndex && mealIndex <= lastMealIndex)) {
                     const meal = state.distributorData[dayIndex].meals[mealName];
                     if (meal?.items) {
@@ -119,7 +129,6 @@ export async function handlePlanUpdate() {
             });
         }
 
-        // 2. Determine the first uncompleted point for re-planning (the meal after the last completed one)
         const nextMealIndex = lastMealIndex + 1;
         if (nextMealIndex < MEAL_NAMES.length) {
             firstUncompleted = { dayIndex: lastCompletedPoint.dayIndex, mealName: MEAL_NAMES[nextMealIndex] };
@@ -128,8 +137,7 @@ export async function handlePlanUpdate() {
         }
 
     } else {
-        // Fallback to original logic if no meals are marked complete.
-        console.log("No completed meals found. Finding first uncompleted meal literally.");
+        console.log("No completed meals found.");
         for (let i = 0; i < state.distributorData.length; i++) {
             for (const mealName of MEAL_NAMES) {
                 if (!state.distributorData[i].meals[mealName]?.completed) {
@@ -141,31 +149,26 @@ export async function handlePlanUpdate() {
         }
     }
 
-    // If no uncompleted point was found (everything is implicitly or explicitly complete)
     if (!firstUncompleted || firstUncompleted.dayIndex >= state.distributorData.length) {
         if (newDuration > state.distributorData.length) {
-             console.log("All existing meals are complete. Extending plan.");
              firstUncompleted = { dayIndex: state.distributorData.length, mealName: MEAL_NAMES[0] };
         } else {
-            alert("All meals are marked as complete or are before the last completed meal. Nothing to re-optimize!");
+            alert("All meals are marked as complete. Nothing to re-optimize!");
             planBtn.disabled = false;
             return;
         }
     }
     
-    // Calculate remaining inventory
     const remainingInventory = state.foodDatabase.map(foodItem => {
         const remainingServings = foodItem.servings - (consumedItemsCount[foodItem.name] || 0);
         return remainingServings > 0 ? { ...foodItem, servings: remainingServings } : null;
     }).filter(Boolean);
     
-    // Calculate dates for re-optimization
     const recalcStartDate = new Date(newStartDate.getTime() + firstUncompleted.dayIndex * MS_DAY);
     
     if (recalcStartDate > newEndDate) {
-        alert("No future days left to re-optimize in the selected date range.");
+        alert("No future days left to re-optimize.");
         planBtn.disabled = false;
-        // Trim the plan if needed
         state.distributorData.splice(newDuration);
         state.currentPlan.planParameters.endDate = isoDate(newEndDate);
         state.currentPlan.planParameters.duration = newDuration;
@@ -175,7 +178,6 @@ export async function handlePlanUpdate() {
         return;
     }
 
-    // Calculate macros and item counts consumed on the partial day to guide the re-optimizer
     const foodMap = new Map(state.foodDatabase.map(f => [f.name, f]));
     let consumedOnPartialDay = null;
     if (firstUncompleted && firstUncompleted.dayIndex < state.distributorData.length) {
@@ -184,27 +186,35 @@ export async function handlePlanUpdate() {
         const partialDayItemCounts = {};
         const firstUncompletedMealIndex = MEAL_NAMES.indexOf(firstUncompleted.mealName);
 
-        // Sum macros for all meals on the starting day that occurred BEFORE the re-planning point.
         for (let i = 0; i < firstUncompletedMealIndex; i++) {
             const mealName = MEAL_NAMES[i];
             const meal = dayOfRecalc.meals[mealName];
             if (meal?.items) {
+                // --- START FIX 1: Robust macro calculation ---
                 meal.items.forEach(item => {
-                    const foodData = (typeof item === 'string') ? foodMap.get(item) : (item.isCustom ? item : null);
-                    if (foodData) {
-                        if (typeof item === 'string') {
-                            partialDayItemCounts[item] = (partialDayItemCounts[item] || 0) + 1;
+                    let nutrients = null;
+                    let itemName = null;
+
+                    if (item && typeof item === 'string') {
+                        nutrients = foodMap.get(item);
+                        itemName = item;
+                    } else if (item && item.isCustom) {
+                        nutrients = item.macros;
+                    }
+
+                    if (nutrients) {
+                        if (itemName) {
+                            partialDayItemCounts[itemName] = (partialDayItemCounts[itemName] || 0) + 1;
                         }
-                        const nutrients = foodData.isCustom ? foodData.macros : foodData;
                         MACROS.forEach(macro => {
                             partialDayMacros[macro] += nutrients[macro] || 0;
                         });
                     }
                 });
+                // --- END FIX 1 ---
             }
         }
 
-        // Only create the object if there was actual consumption.
         if (Object.keys(partialDayItemCounts).length > 0 || Object.values(partialDayMacros).some(v => v > 0)) {
             consumedOnPartialDay = {
                 macros: partialDayMacros,
@@ -226,7 +236,6 @@ export async function handlePlanUpdate() {
     });
 
     if (recalcResult?.dailySchedule) {
-        // --- Update the distributorData with the new plan ---
         
         if (state.distributorData.length > newDuration) {
             state.distributorData.splice(newDuration); 
@@ -243,7 +252,6 @@ export async function handlePlanUpdate() {
                 MEAL_NAMES.forEach(mealName => {
                     const meal = day.meals[mealName];
                     if (meal && !meal.completed) {
-                        // Clear out old, non-custom items from the re-planned section
                         meal.items = meal.items.filter(item => item && item.isCustom);
                     }
                 });
@@ -253,13 +261,14 @@ export async function handlePlanUpdate() {
         recalcResult.dailySchedule.forEach((newDayItems, i) => {
             const targetDayIndex = firstUncompleted.dayIndex + i;
             if (targetDayIndex < state.distributorData.length) {
-                let mealIndex = 0;
+                // --- START FIX 2: Correct starting meal index for partial days ---
+                let mealIndex = (i === 0) ? MEAL_NAMES.indexOf(firstUncompleted.mealName) : 0;
+                // --- END FIX 2 ---
                 newDayItems.forEach(item => {
                     let mealAssigned = false, attempts = 0;
                     while (!mealAssigned && attempts < MEAL_NAMES.length) {
                         const mealName = MEAL_NAMES[mealIndex % MEAL_NAMES.length];
                         const targetMeal = state.distributorData[targetDayIndex].meals[mealName];
-                        // Add item to the first available (uncompleted) meal slot
                         if (targetMeal && !targetMeal.completed) {
                             targetMeal.items.push(item);
                             mealAssigned = true;
@@ -271,7 +280,6 @@ export async function handlePlanUpdate() {
             }
         });
         
-        // --- Update the main `currentPlan` object ---
         const newTotalConsumption = { ...consumedItemsCount };
         for (const [name, count] of Object.entries(recalcResult.consumption)) {
             newTotalConsumption[name] = (newTotalConsumption[name] || 0) + count;
@@ -285,31 +293,30 @@ export async function handlePlanUpdate() {
             originalGoals: config.macros
         };
         
-        const newShoppingList = [], newWasteAnalysis = { wasted: [], atRisk: [] };
+        const newShoppingList = [];
         const masterInventoryMap = new Map(state.foodDatabase.map(item => [item.name, item]));
 
         Object.entries(newTotalConsumption).forEach(([name, totalNeeded]) => {
             const inventoryItem = masterInventoryMap.get(name);
             if (inventoryItem && inventoryItem.shoppable) {
                 const onHand = inventoryItem.servings || 0;
-                const toBuy = Math.max(0, totalNeeded - onHand);
-                if (toBuy > 0) newShoppingList.push({ name, toBuy });
-            }
-        });
-
-        state.foodDatabase.forEach(item => {
-            const consumed = newTotalConsumption[item.name] || 0;
-            const unscheduled = item.servings - consumed;
-            if (unscheduled > 0) {
-                 const expiryDate = parseDateString(item.expiration);
-                if (expiryDate) {
-                    const daysUntilExpiry = (expiryDate.getTime() - newStartDate.getTime()) / MS_DAY;
-                    if (daysUntilExpiry < newDuration) {
-                        newWasteAnalysis.wasted.push({ name: item.name, count: unscheduled });
-                    }
+                const servingsNeededFromStore = Math.max(0, totalNeeded - onHand);
+                if (servingsNeededFromStore > 0) {
+                    const servingsPerPackage = inventoryItem.servingsPerPackage || 1;
+                    const packagesToBuy = Math.ceil(servingsNeededFromStore / servingsPerPackage);
+                    const totalServingsPurchased = packagesToBuy * servingsPerPackage;
+                    newShoppingList.push({ 
+                        name, 
+                        packagesToBuy,
+                        servingsPerPackage,
+                        totalServings: totalServingsPurchased
+                    });
                 }
             }
         });
+
+        // UPDATED: Use helper to calculate waste (consistent logic with generatePlan)
+        const newWasteAnalysis = calculateWasteAnalysis(state.foodDatabase, newTotalConsumption, newStartDate, newDuration);
         
         state.currentPlan.shoppingList = newShoppingList;
         state.currentPlan.wasteAnalysis = newWasteAnalysis;
@@ -331,7 +338,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
 
     planBtn.disabled = true;
     
-    // --- Determine Parameters ---
     const config = state.planConfig;
     const optimizationStrength = isRecalculation ? options.strength : config.strength;
     const shoppingAllowed = isRecalculation ? options.allowShopping : config.allowShopping;
@@ -342,7 +348,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     
     let consumedOnPartialDay = isRecalculation ? options.consumedOnPartialDay : null;
 
-    // This logic applies to a fresh plan generation, to account for pre-added custom meals on day 1.
     if (!isRecalculation && state.distributorData.length > 0 && state.distributorData[0].meals) {
         const initialDayMacros = Object.fromEntries(MACROS.map(key => [key, 0]));
         const initialDayItemCounts = {};
@@ -351,8 +356,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
             if (meal) {
                 meal.items.forEach(item => {
                     if (item && item.isCustom) {
-                        // Custom items don't have a DB entry for maxPerDay, but we track their name
-                        // in case a user manually enters an item that shares a name with a DB item.
                         initialDayItemCounts[item.name] = (initialDayItemCounts[item.name] || 0) + 1;
                         Object.keys(initialDayMacros).forEach(macro => {
                             initialDayMacros[macro] += item.macros[macro] || 0;
@@ -378,26 +381,16 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         return;
     }
 
-    const gaParams = {
-        generations: optimizationStrength,
-        populationSize: 50,
-        mutationStart: 0.6,
-        mutationEnd: 0.1
-    };
-    
     const planDurationDays = Math.round((endDate.getTime() - startDate.getTime()) / MS_DAY) + 1;
 
-    // --- FIX: Implement Normalization in the Progress Display ---
-    const updateProgress = async (generation, bestScore) => {
-        // Divide the total score by the number of days being planned.
-        // Use Math.max(1, ...) to prevent division by zero if planDuration is somehow 0.
+    const updateProgress = (generation, bestScore, elapsedMs, totalMs) => {
         const normalizedScore = bestScore / Math.max(1, planDurationDays);
-
-        summaryEl.innerHTML = `Optimizing...<br>
-            <strong>Generation:</strong> ${generation + 1} / ${gaParams.generations}<br>
+        const elapsedSec = (elapsedMs / 1000).toFixed(1);
+        const totalSec = (totalMs / 1000).toFixed(0);
+        summaryEl.innerHTML = `Optimizing... (runs in background)<br>
+            <strong>Time:</strong> ${elapsedSec}s / ${totalSec}s<br>
+            <strong>Generations:</strong> ${generation}<br>
             <strong>Avg. Daily Score (Penalty):</strong> ${normalizedScore.toFixed(2)}`;
-        
-        await new Promise(resolve => setTimeout(resolve, 0));
     };
 
     summaryEl.textContent = 'Preparing for optimization...';
@@ -410,13 +403,6 @@ export async function generatePlan(isRecalculation = false, options = {}) {
     });
 
     if (shoppingAllowed) {
-        // OLD: const VIRTUAL_SHOPPING_POOL_SIZE = 100;
-        // Using a fixed, large number created an enormous search space for the
-        // optimizer, leading to slow convergence and poor performance.
-        // NEW: The virtual pool size is now dynamic, based on the plan's duration.
-        // This provides a sufficient but not excessive number of shoppable items,
-        // dramatically reducing the GA's search space and leading to faster,
-        // more effective optimization.
         const VIRTUAL_SHOPPING_POOL_SIZE = planDurationDays;
         const masterInventory = state.foodDatabase;
 
@@ -429,8 +415,33 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         });
     }
 
-    const planner = new GeneticAlgorithmPlanner(units, macroGoals, startDate, planDurationDays, gaParams, false, consumedOnPartialDay);
-    const bestIndividual = await planner.run(updateProgress);
+    const foodDataMap = new Map(state.foodDatabase.map(f => [f.name, f]));
+    
+    const gaParams = {
+        populationSize: 500,
+        mutationStart: 0.1,
+        mutationEnd: 0.05
+    };
+
+    const workerParams = {
+        units,
+        macroGoals,
+        startDate: isoDate(startDate), 
+        totalDays: planDurationDays,
+        optDurationSeconds: optimizationStrength,
+        gaParams,
+        foodDataMap,
+        consumedOnFirstDay: consumedOnPartialDay, 
+        constants: {
+            MACROS: utils.MACROS,
+            MACRO_WEIGHTS: utils.MACRO_WEIGHTS,
+            PENALTY_SCALE_FACTOR: utils.PENALTY_SCALE_FACTOR,
+            WASTE_PENALTY: utils.WASTE_PENALTY,
+            LIMIT_VIOLATION_PENALTY: utils.LIMIT_VIOLATION_PENALTY,
+        }
+    };
+    
+    const bestIndividual = await runOptimizerInWorker(workerParams, updateProgress);
     
     const dailySchedule = Array.from({ length: planDurationDays }, () => []);
     const onHandConsumption = {};
@@ -461,33 +472,23 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         const inventoryItem = masterInventoryMap.get(name);
         if (inventoryItem && inventoryItem.shoppable) {
             const onHand = inventoryItem.servings || 0;
-            const toBuy = Math.max(0, totalNeeded - onHand);
-            if (toBuy > 0) {
-                shoppingList.push({ name, toBuy });
+            const servingsNeededFromStore = Math.max(0, totalNeeded - onHand);
+            if (servingsNeededFromStore > 0) {
+                const servingsPerPackage = inventoryItem.servingsPerPackage || 1;
+                const packagesToBuy = Math.ceil(servingsNeededFromStore / servingsPerPackage);
+                const totalServingsPurchased = packagesToBuy * servingsPerPackage;
+                shoppingList.push({ 
+                    name, 
+                    packagesToBuy,
+                    servingsPerPackage,
+                    totalServings: totalServingsPurchased
+                });
             }
         }
     });
 
-    const wasteAnalysis = { wasted: [], atRisk: [] };
-    sourceInventory.forEach(item => {
-        const consumed = onHandConsumption[item.name] || 0;
-        const unscheduled = item.servings - consumed;
-        if (unscheduled > 0) {
-            const expiryDate = parseDateString(item.expiration);
-            if (expiryDate) {
-                const daysUntilExpiry = (expiryDate.getTime() - startDate.getTime()) / MS_DAY;
-                if (daysUntilExpiry < planDurationDays) {
-                    wasteAnalysis.wasted.push({ name: item.name, count: unscheduled });
-                } else {
-                    const consumptionRate = consumed / planDurationDays;
-                    const daysToEatRemainder = consumptionRate > 0 ? unscheduled / consumptionRate : Infinity;
-                    if (planDurationDays + daysToEatRemainder > daysUntilExpiry) {
-                        wasteAnalysis.atRisk.push({ name: item.name, count: unscheduled });
-                    }
-                }
-            }
-        }
-    });
+    // UPDATED: Use the helper function for consistent logic with UI reporting
+    const wasteAnalysis = calculateWasteAnalysis(sourceInventory, onHandConsumption, startDate, planDurationDays);
 
     const planResult = { 
         planParameters: { startDate: isoDate(startDate), endDate: isoDate(endDate), duration: planDurationDays, originalGoals: macroGoals }, 
@@ -523,7 +524,6 @@ export function finishPlan() {
             const meal = day.meals[mealName];
             if (meal?.completed) {
                 meal.items.forEach(item => {
-                    // Only count non-custom, string-based items that are in the inventory
                     if (typeof item === 'string') {
                         completedConsumption.set(item, (completedConsumption.get(item) || 0) + 1);
                     }

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Face Warper - Drag Fixed</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0a0a; display: flex; height: 100vh; font-family: 'Segoe UI', sans-serif; color: white; }
+        
+        #sidebar {
+            width: 340px;
+            background: #1a1a1a;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            z-index: 20;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+            user-select: none; /* Prevents text highlighting while dragging */
+        }
+
+        h2 { margin: 0 0 10px 0; font-size: 20px; letter-spacing: 1px; }
+        .label { font-size: 12px; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+
+        .face-schematic {
+            width: 240px;
+            height: 300px;
+            background: #2a2a2a;
+            border-radius: 100px 100px 80px 80px;
+            position: relative;
+            margin-bottom: 30px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            border: 2px solid #333;
+        }
+
+        .socket {
+            width: 80px; height: 80px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50%;
+            position: absolute;
+            top: 90px;
+            border: 1px solid #444;
+        }
+        #socket-left { left: 25px; } 
+        #socket-right { right: 25px; }
+
+        .control-eye {
+            width: 40px; height: 40px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 2;
+            /* Important for consistent cursor behavior */
+            touch-action: none; 
+        }
+        .control-eye:active { cursor: grabbing; background: #d4f1f9; }
+        .pupil { width: 14px; height: 14px; background: #111; border-radius: 50%; pointer-events: none; }
+
+        .nose-bridge { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); width: 20px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .mouth-line { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); width: 60px; height: 4px; background: #444; border-radius: 2px; }
+
+        .slider-container { width: 100%; margin-bottom: 20px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        
+        .checkbox-container { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #ccc; cursor: pointer; }
+
+        #stage {
+            flex-grow: 1;
+            position: relative;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .canvas-layer {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scaleX(-1);
+            max-width: 100%; max-height: 100%;
+        }
+        
+        #loading {
+            position: absolute; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Face Warper</h2>
+    <p class="label">Drag the eyes</p>
+
+    <div class="face-schematic">
+        <div class="nose-bridge"></div>
+        <div class="socket" id="socket-left">
+            <div class="control-eye" id="ctrl-left"><div class="pupil"></div></div>
+        </div>
+        <div class="socket" id="socket-right">
+            <div class="control-eye" id="ctrl-right"><div class="pupil"></div></div>
+        </div>
+        <div class="mouth-line"></div>
+    </div>
+
+    <div class="slider-container">
+        <div class="slider-label"><span>Warp Radius</span> <span id="val-radius">1.0</span></div>
+        <input type="range" id="input-radius" min="0.1" max="2.0" step="0.05" value="1.0">
+    </div>
+    
+    <div class="slider-container">
+        <div class="slider-label"><span>Warp Strength</span> <span id="val-strength">0.2</span></div>
+        <input type="range" id="input-strength" min="0.0" max="2.0" step="0.05" value="0.2">
+    </div>
+
+    <label class="checkbox-container">
+        <!-- REMOVED 'checked' attribute -->
+        <input type="checkbox" id="input-wireframe"> Show Face Mesh
+    </label>
+    <br>
+    <button onclick="resetUI()" style="background:#444; color:white; border:none; padding:8px 20px; border-radius:4px; cursor:pointer;">Reset Eyes</button>
+</div>
+
+<div id="stage">
+    <div id="loading">Loading AI Models...</div>
+    <video id="input_video" style="display:none"></video>
+    <canvas id="gl_canvas" class="canvas-layer"></canvas>
+    <canvas id="overlay_canvas" class="canvas-layer"></canvas>
+</div>
+
+<script>
+const config = {
+    warpRadius: 1.0,
+    warpStrength: 0.2,
+    showMesh: false, // Changed default to false here
+    uiOffset: { left: {x: 0, y: 0}, right: {x: 0, y: 0} },
+    faceAngle: { sin: 0, cos: 1 }
+};
+
+const ctrlLeft = document.getElementById('ctrl-left');
+const ctrlRight = document.getElementById('ctrl-right');
+const rangeRadius = document.getElementById('input-radius');
+const rangeStrength = document.getElementById('input-strength');
+const checkWireframe = document.getElementById('input-wireframe');
+
+rangeRadius.addEventListener('input', (e) => { 
+    config.warpRadius = parseFloat(e.target.value);
+    document.getElementById('val-radius').innerText = config.warpRadius;
+});
+rangeStrength.addEventListener('input', (e) => { 
+    config.warpStrength = parseFloat(e.target.value);
+    document.getElementById('val-strength').innerText = config.warpStrength;
+});
+checkWireframe.addEventListener('change', (e) => { config.showMesh = e.target.checked; });
+
+// --- FIXED DRAG FUNCTION ---
+function enableDrag(element, sideKey) {
+    let isDragging = false;
+    const parent = element.parentElement;
+
+    element.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        e.preventDefault(); // PREVENTS THE "NO-DROP" SYMBOL AND STICKING
+    });
+
+    // Attach to window so dragging continues if mouse leaves the small box
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault(); // Prevents text selection
+
+        const rect = parent.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+
+        const pad = 15;
+        x = Math.max(pad, Math.min(x, rect.width - pad));
+        y = Math.max(pad, Math.min(y, rect.height - pad));
+
+        element.style.left = x + 'px';
+        element.style.top = y + 'px';
+
+        const nx = (x - (rect.width/2)) / (rect.width/2);
+        const ny = (y - (rect.height/2)) / (rect.height/2);
+
+        config.uiOffset[sideKey] = { x: nx, y: ny };
+    });
+}
+
+enableDrag(ctrlLeft, 'left');
+enableDrag(ctrlRight, 'right');
+
+function resetUI() {
+    ctrlLeft.style.left = '50%'; ctrlLeft.style.top = '50%';
+    ctrlRight.style.left = '50%'; ctrlRight.style.top = '50%';
+    config.uiOffset.left = {x:0, y:0};
+    config.uiOffset.right = {x:0, y:0};
+}
+
+// --- SHADERS ---
+const glCanvas = document.getElementById('gl_canvas');
+const gl = glCanvas.getContext('webgl');
+const video = document.getElementById('input_video');
+
+const vs = `
+attribute vec2 position;
+varying vec2 vUv;
+void main() {
+    vUv = position * 0.5 + 0.5;
+    vUv.y = 1.0 - vUv.y; 
+    gl_Position = vec4(position, 0.0, 1.0);
+}`;
+
+const fs = `
+precision mediump float;
+uniform sampler2D uTexture;
+uniform float uAspectRatio;
+uniform vec2 uLeftEye;
+uniform vec2 uRightEye;
+uniform float uFaceWidth;
+uniform float uSin;
+uniform float uCos;
+uniform vec2 uOffL;
+uniform vec2 uOffR;
+uniform float uRadiusMult;
+uniform float uStrength;
+varying vec2 vUv;
+
+void main() {
+    vec2 uv = vUv;
+    vec2 aspect = vec2(uAspectRatio, 1.0);
+    float radius = uFaceWidth * uRadiusMult;
+    
+    float distL = distance(uv * aspect, uLeftEye * aspect);
+    float influenceL = smoothstep(radius, 0.0, distL);
+    vec2 rotOffL;
+    rotOffL.x = uOffL.x * uCos - uOffL.y * uSin;
+    rotOffL.y = uOffL.x * uSin + uOffL.y * uCos;
+    uv -= rotOffL * radius * uStrength * influenceL;
+
+    float distR = distance(uv * aspect, uRightEye * aspect);
+    float influenceR = smoothstep(radius, 0.0, distR);
+    vec2 rotOffR;
+    rotOffR.x = uOffR.x * uCos - uOffR.y * uSin;
+    rotOffR.y = uOffR.x * uSin + uOffR.y * uCos;
+    uv -= rotOffR * radius * uStrength * influenceR;
+
+    gl_FragColor = texture2D(uTexture, uv);
+}`;
+
+function compileShader(src, type) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compileShader(vs, gl.VERTEX_SHADER));
+gl.attachShader(prog, compileShader(fs, gl.FRAGMENT_SHADER));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+const locPos = gl.getAttribLocation(prog, 'position');
+gl.enableVertexAttribArray(locPos);
+gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+const locs = {
+    aspect: gl.getUniformLocation(prog, 'uAspectRatio'),
+    leftEye: gl.getUniformLocation(prog, 'uLeftEye'),
+    rightEye: gl.getUniformLocation(prog, 'uRightEye'),
+    faceWidth: gl.getUniformLocation(prog, 'uFaceWidth'),
+    offL: gl.getUniformLocation(prog, 'uOffL'),
+    offR: gl.getUniformLocation(prog, 'uOffR'),
+    radMult: gl.getUniformLocation(prog, 'uRadiusMult'),
+    str: gl.getUniformLocation(prog, 'uStrength'),
+    uSin: gl.getUniformLocation(prog, 'uSin'),
+    uCos: gl.getUniformLocation(prog, 'uCos')
+};
+
+const overlayCanvas = document.getElementById('overlay_canvas');
+const ctx = overlayCanvas.getContext('2d');
+
+let faceData = { left: {x: 0.5, y: 0.5}, right: {x: 0.5, y: 0.5}, width: 0.1, detected: false };
+
+function onResults(results) {
+    document.getElementById('loading').style.display = 'none';
+
+    if (glCanvas.width !== video.videoWidth) {
+        glCanvas.width = video.videoWidth;
+        glCanvas.height = video.videoHeight;
+        overlayCanvas.width = video.videoWidth;
+        overlayCanvas.height = video.videoHeight;
+        gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    }
+
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+        faceData.detected = true;
+        faceData.left = landmarks[473]; 
+        faceData.right = landmarks[468];
+        
+        const dx = faceData.right.x - faceData.left.x;
+        const dy = faceData.right.y - faceData.left.y;
+        faceData.width = Math.sqrt(dx*dx + dy*dy);
+
+        const len = Math.max(faceData.width, 0.001);
+        config.faceAngle.cos = dx / len; 
+        config.faceAngle.sin = dy / len; 
+
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        if(config.showMesh) {
+            drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#00FF00', lineWidth: 0.5});
+        }
+    } else {
+        faceData.detected = false;
+        config.faceAngle.sin = 0; config.faceAngle.cos = 1;
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
+    renderWebGL();
+}
+
+function renderWebGL() {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+
+    gl.uniform1f(locs.aspect, glCanvas.width / glCanvas.height);
+    
+    if(faceData.detected) {
+        gl.uniform2f(locs.leftEye, faceData.left.x, faceData.left.y);
+        gl.uniform2f(locs.rightEye, faceData.right.x, faceData.right.y);
+        gl.uniform1f(locs.faceWidth, faceData.width);
+    } else {
+        gl.uniform1f(locs.faceWidth, 0.0); 
+    }
+
+    gl.uniform2f(locs.offL, config.uiOffset.left.x, -config.uiOffset.left.y);
+    gl.uniform2f(locs.offR, config.uiOffset.right.x, -config.uiOffset.right.y);
+    gl.uniform1f(locs.uSin, config.faceAngle.sin);
+    gl.uniform1f(locs.uCos, config.faceAngle.cos);
+    gl.uniform1f(locs.radMult, config.warpRadius);
+    gl.uniform1f(locs.str, config.warpStrength);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+faceMesh.setOptions({maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+faceMesh.onResults(onResults);
+
+const camera = new Camera(video, {
+    onFrame: async () => { await faceMesh.send({image: video}); },
+    width: 1280, height: 720
+});
+camera.start();
+</script>
+</body>
+</html>

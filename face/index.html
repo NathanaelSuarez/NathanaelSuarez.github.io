@@ -1,11 +1,21 @@
+<!-- START OF FILE index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Face Warper - Drag Fixed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Face Warper - Mobile Ready</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #0a0a0a; display: flex; height: 100vh; font-family: 'Segoe UI', sans-serif; color: white; }
+        /* Base Desktop Styles */
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #0a0a0a; 
+            display: flex; 
+            height: 100vh; 
+            font-family: 'Segoe UI', sans-serif; 
+            color: white; 
+        }
         
         #sidebar {
             width: 340px;
@@ -17,11 +27,20 @@
             padding: 20px;
             z-index: 20;
             box-shadow: 10px 0 30px rgba(0,0,0,0.5);
-            user-select: none; /* Prevents text highlighting while dragging */
+            user-select: none;
+            overflow-y: auto; /* Handle tall screens */
+            flex-shrink: 0;
         }
 
-        h2 { margin: 0 0 10px 0; font-size: 20px; letter-spacing: 1px; }
-        .label { font-size: 12px; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .control-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2 { margin: 0 0 10px 0; font-size: 20px; letter-spacing: 1px; text-align: center; }
+        .label { font-size: 12px; color: #888; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
 
         .face-schematic {
             width: 240px;
@@ -29,9 +48,10 @@
             background: #2a2a2a;
             border-radius: 100px 100px 80px 80px;
             position: relative;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
             border: 2px solid #333;
+            flex-shrink: 0;
         }
 
         .socket {
@@ -56,8 +76,7 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             display: flex; align-items: center; justify-content: center;
             z-index: 2;
-            /* Important for consistent cursor behavior */
-            touch-action: none; 
+            touch-action: none; /* Critical for mobile drag */
         }
         .control-eye:active { cursor: grabbing; background: #d4f1f9; }
         .pupil { width: 14px; height: 14px; background: #111; border-radius: 50%; pointer-events: none; }
@@ -65,11 +84,11 @@
         .nose-bridge { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); width: 20px; height: 80px; background: rgba(255,255,255,0.05); border-radius: 10px; }
         .mouth-line { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); width: 60px; height: 4px; background: #444; border-radius: 2px; }
 
-        .slider-container { width: 100%; margin-bottom: 20px; }
+        .slider-container { width: 100%; margin-bottom: 15px; }
         .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; margin-bottom: 5px; }
         input[type=range] { width: 100%; cursor: pointer; }
         
-        .checkbox-container { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #ccc; cursor: pointer; }
+        .checkbox-container { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #ccc; cursor: pointer; margin-bottom: 15px;}
 
         #stage {
             flex-grow: 1;
@@ -79,6 +98,7 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            width: 100%;
         }
 
         .canvas-layer {
@@ -86,11 +106,53 @@
             top: 50%; left: 50%;
             transform: translate(-50%, -50%) scaleX(-1);
             max-width: 100%; max-height: 100%;
+            /* Ensure video fits on mobile screens nicely */
+            object-fit: contain;
         }
         
         #loading {
             position: absolute; z-index: 100;
             background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px;
+            pointer-events: none;
+        }
+
+        /* --- MOBILE OPTIMIZATIONS --- */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+
+            #sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 45vh; /* Don't let controls eat the whole screen */
+                flex-direction: row;
+                flex-wrap: wrap;
+                padding: 10px;
+                border-right: none;
+                border-bottom: 1px solid #333;
+                justify-content: center;
+                gap: 20px;
+                box-sizing: border-box;
+            }
+
+            /* Scale down the face to fit horizontally/vertically */
+            .face-schematic {
+                transform: scale(0.7); 
+                margin-bottom: 0;
+                margin-top: -20px; /* Counteract scale whitespace */
+                margin-bottom: -20px;
+            }
+
+            .control-group {
+                width: auto;
+                flex-grow: 1;
+                max-width: 300px;
+                min-width: 200px;
+            }
+
+            h2 { display: none; } /* Hide title on mobile to save space */
+            .label { margin-bottom: 5px; }
         }
     </style>
 
@@ -101,9 +163,6 @@
 <body>
 
 <div id="sidebar">
-    <h2>Face Warper</h2>
-    <p class="label">Drag the eyes</p>
-
     <div class="face-schematic">
         <div class="nose-bridge"></div>
         <div class="socket" id="socket-left">
@@ -115,27 +174,31 @@
         <div class="mouth-line"></div>
     </div>
 
-    <div class="slider-container">
-        <div class="slider-label"><span>Warp Radius</span> <span id="val-radius">1.0</span></div>
-        <input type="range" id="input-radius" min="0.1" max="2.0" step="0.05" value="1.0">
-    </div>
-    
-    <div class="slider-container">
-        <div class="slider-label"><span>Warp Strength</span> <span id="val-strength">0.2</span></div>
-        <input type="range" id="input-strength" min="0.0" max="2.0" step="0.05" value="0.2">
-    </div>
+    <div class="control-group">
+        <h2>Face Warper</h2>
+        <p class="label">Drag Eyes • Adjust Settings</p>
 
-    <label class="checkbox-container">
-        <!-- REMOVED 'checked' attribute -->
-        <input type="checkbox" id="input-wireframe"> Show Face Mesh
-    </label>
-    <br>
-    <button onclick="resetUI()" style="background:#444; color:white; border:none; padding:8px 20px; border-radius:4px; cursor:pointer;">Reset Eyes</button>
+        <div class="slider-container">
+            <div class="slider-label"><span>Warp Radius</span> <span id="val-radius">1.0</span></div>
+            <input type="range" id="input-radius" min="0.1" max="2.0" step="0.05" value="1.0">
+        </div>
+        
+        <div class="slider-container">
+            <div class="slider-label"><span>Warp Strength</span> <span id="val-strength">0.2</span></div>
+            <input type="range" id="input-strength" min="0.0" max="2.0" step="0.05" value="0.2">
+        </div>
+
+        <label class="checkbox-container">
+            <input type="checkbox" id="input-wireframe"> Show Face Mesh
+        </label>
+        
+        <button onclick="resetUI()" style="background:#444; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; width: 100%;">Reset Eyes</button>
+    </div>
 </div>
 
 <div id="stage">
     <div id="loading">Loading AI Models...</div>
-    <video id="input_video" style="display:none"></video>
+    <video id="input_video" style="display:none" playsinline webkit-playsinline></video>
     <canvas id="gl_canvas" class="canvas-layer"></canvas>
     <canvas id="overlay_canvas" class="canvas-layer"></canvas>
 </div>
@@ -144,7 +207,7 @@
 const config = {
     warpRadius: 1.0,
     warpStrength: 0.2,
-    showMesh: false, // Changed default to false here
+    showMesh: false,
     uiOffset: { left: {x: 0, y: 0}, right: {x: 0, y: 0} },
     faceAngle: { sin: 0, cos: 1 }
 };
@@ -165,39 +228,68 @@ rangeStrength.addEventListener('input', (e) => {
 });
 checkWireframe.addEventListener('change', (e) => { config.showMesh = e.target.checked; });
 
-// --- FIXED DRAG FUNCTION ---
+// --- UNIFIED DRAG FUNCTION (MOUSE + TOUCH) ---
 function enableDrag(element, sideKey) {
     let isDragging = false;
     const parent = element.parentElement;
 
-    element.addEventListener('mousedown', (e) => {
+    // Helper to get X/Y from either mouse or touch event
+    function getCoords(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDrag(e) {
         isDragging = true;
-        e.preventDefault(); // PREVENTS THE "NO-DROP" SYMBOL AND STICKING
-    });
+        // Prevent default to stop text selection (mouse) or scrolling (touch)
+        // Note: e.preventDefault() on touchstart might block clicks on some elements, 
+        // but for a drag handle, it's usually desired.
+        if (e.cancelable) e.preventDefault(); 
+        element.style.cursor = 'grabbing';
+    }
 
-    // Attach to window so dragging continues if mouse leaves the small box
-    window.addEventListener('mouseup', () => isDragging = false);
+    function endDrag() {
+        isDragging = false;
+        element.style.cursor = 'grab';
+    }
 
-    window.addEventListener('mousemove', (e) => {
+    function doDrag(e) {
         if (!isDragging) return;
-        e.preventDefault(); // Prevents text selection
+        
+        // Prevent screen scrolling on mobile while dragging
+        if(e.cancelable) e.preventDefault();
 
+        const coords = getCoords(e);
         const rect = parent.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
+        
+        let x = coords.x - rect.left;
+        let y = coords.y - rect.top;
 
-        const pad = 15;
+        const pad = 15; // boundary padding
         x = Math.max(pad, Math.min(x, rect.width - pad));
         y = Math.max(pad, Math.min(y, rect.height - pad));
 
         element.style.left = x + 'px';
         element.style.top = y + 'px';
 
+        // Normalize -1 to 1
         const nx = (x - (rect.width/2)) / (rect.width/2);
         const ny = (y - (rect.height/2)) / (rect.height/2);
 
         config.uiOffset[sideKey] = { x: nx, y: ny };
-    });
+    }
+
+    // Mouse Events
+    element.addEventListener('mousedown', startDrag);
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('mousemove', doDrag);
+
+    // Touch Events (Passive false is important to allow preventDefault)
+    element.addEventListener('touchstart', startDrag, {passive: false});
+    window.addEventListener('touchend', endDrag);
+    window.addEventListener('touchmove', doDrag, {passive: false});
 }
 
 enableDrag(ctrlLeft, 'left');
@@ -210,7 +302,7 @@ function resetUI() {
     config.uiOffset.right = {x:0, y:0};
 }
 
-// --- SHADERS ---
+// --- SHADERS & WEBGL ---
 const glCanvas = document.getElementById('gl_canvas');
 const gl = glCanvas.getContext('webgl');
 const video = document.getElementById('input_video');
@@ -244,6 +336,7 @@ void main() {
     vec2 aspect = vec2(uAspectRatio, 1.0);
     float radius = uFaceWidth * uRadiusMult;
     
+    // Left Eye Warp
     float distL = distance(uv * aspect, uLeftEye * aspect);
     float influenceL = smoothstep(radius, 0.0, distL);
     vec2 rotOffL;
@@ -251,6 +344,7 @@ void main() {
     rotOffL.y = uOffL.x * uSin + uOffL.y * uCos;
     uv -= rotOffL * radius * uStrength * influenceL;
 
+    // Right Eye Warp
     float distR = distance(uv * aspect, uRightEye * aspect);
     float influenceR = smoothstep(radius, 0.0, distR);
     vec2 rotOffR;
@@ -309,7 +403,8 @@ let faceData = { left: {x: 0.5, y: 0.5}, right: {x: 0.5, y: 0.5}, width: 0.1, de
 function onResults(results) {
     document.getElementById('loading').style.display = 'none';
 
-    if (glCanvas.width !== video.videoWidth) {
+    // Resize Canvas only if dimensions changed
+    if (glCanvas.width !== video.videoWidth || glCanvas.height !== video.videoHeight) {
         glCanvas.width = video.videoWidth;
         glCanvas.height = video.videoHeight;
         overlayCanvas.width = video.videoWidth;
@@ -327,6 +422,7 @@ function onResults(results) {
         const dy = faceData.right.y - faceData.left.y;
         faceData.width = Math.sqrt(dx*dx + dy*dy);
 
+        // Calculate Face Rotation (Roll) to align warp
         const len = Math.max(faceData.width, 0.001);
         config.faceAngle.cos = dx / len; 
         config.faceAngle.sin = dy / len; 

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Face Warper - Mobile Ready</title>
+    <title>Pro Face Warper - Mobile Fix</title>
     <style>
         /* Base Desktop Styles */
         body { 
@@ -28,7 +28,7 @@
             z-index: 20;
             box-shadow: 10px 0 30px rgba(0,0,0,0.5);
             user-select: none;
-            overflow-y: auto; /* Handle tall screens */
+            overflow-y: auto;
             flex-shrink: 0;
         }
 
@@ -42,6 +42,7 @@
         h2 { margin: 0 0 10px 0; font-size: 20px; letter-spacing: 1px; text-align: center; }
         .label { font-size: 12px; color: #888; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
 
+        /* DESKTOP FACE DIMENSIONS */
         .face-schematic {
             width: 240px;
             height: 300px;
@@ -76,7 +77,7 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
             display: flex; align-items: center; justify-content: center;
             z-index: 2;
-            touch-action: none; /* Critical for mobile drag */
+            touch-action: none; 
         }
         .control-eye:active { cursor: grabbing; background: #d4f1f9; }
         .pupil { width: 14px; height: 14px; background: #111; border-radius: 50%; pointer-events: none; }
@@ -106,7 +107,6 @@
             top: 50%; left: 50%;
             transform: translate(-50%, -50%) scaleX(-1);
             max-width: 100%; max-height: 100%;
-            /* Ensure video fits on mobile screens nicely */
             object-fit: contain;
         }
         
@@ -118,41 +118,58 @@
 
         /* --- MOBILE OPTIMIZATIONS --- */
         @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-            }
+            body { flex-direction: column; }
 
             #sidebar {
                 width: 100%;
                 height: auto;
-                max-height: 45vh; /* Don't let controls eat the whole screen */
+                max-height: 40vh;
                 flex-direction: row;
                 flex-wrap: wrap;
                 padding: 10px;
                 border-right: none;
                 border-bottom: 1px solid #333;
                 justify-content: center;
-                gap: 20px;
+                gap: 15px;
                 box-sizing: border-box;
             }
 
-            /* Scale down the face to fit horizontally/vertically */
+            /* PHYSICALLY RESIZE SCHEMATIC (NO TRANSFORMS) */
             .face-schematic {
-                transform: scale(0.7); 
+                width: 160px;
+                height: 190px;
+                border-radius: 60px 60px 50px 50px;
                 margin-bottom: 0;
-                margin-top: -20px; /* Counteract scale whitespace */
-                margin-bottom: -20px;
+            }
+
+            .socket {
+                width: 50px; height: 50px;
+                top: 55px; /* Adjust vertical pos */
+            }
+            #socket-left { left: 15px; } 
+            #socket-right { right: 15px; }
+
+            .control-eye {
+                width: 30px; height: 30px; /* Smaller draggable eye */
+            }
+            .pupil { width: 10px; height: 10px; }
+
+            .nose-bridge { 
+                top: 55px; height: 50px; width: 14px; 
+            }
+            .mouth-line { 
+                bottom: 45px; width: 40px; 
             }
 
             .control-group {
                 width: auto;
                 flex-grow: 1;
                 max-width: 300px;
-                min-width: 200px;
+                min-width: 180px;
             }
 
-            h2 { display: none; } /* Hide title on mobile to save space */
-            .label { margin-bottom: 5px; }
+            h2 { display: none; }
+            .label { margin-bottom: 5px; display: none; }
         }
     </style>
 
@@ -192,7 +209,7 @@
             <input type="checkbox" id="input-wireframe"> Show Face Mesh
         </label>
         
-        <button onclick="resetUI()" style="background:#444; color:white; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; width: 100%;">Reset Eyes</button>
+        <button onclick="resetUI()" style="background:#444; color:white; border:none; padding:8px 20px; border-radius:4px; cursor:pointer; width: 100%;">Reset Eyes</button>
     </div>
 </div>
 
@@ -233,7 +250,6 @@ function enableDrag(element, sideKey) {
     let isDragging = false;
     const parent = element.parentElement;
 
-    // Helper to get X/Y from either mouse or touch event
     function getCoords(e) {
         if (e.touches && e.touches.length > 0) {
             return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -243,10 +259,7 @@ function enableDrag(element, sideKey) {
 
     function startDrag(e) {
         isDragging = true;
-        // Prevent default to stop text selection (mouse) or scrolling (touch)
-        // Note: e.preventDefault() on touchstart might block clicks on some elements, 
-        // but for a drag handle, it's usually desired.
-        if (e.cancelable) e.preventDefault(); 
+        if (e.cancelable && e.type !== 'mousedown') e.preventDefault(); 
         element.style.cursor = 'grabbing';
     }
 
@@ -257,8 +270,6 @@ function enableDrag(element, sideKey) {
 
     function doDrag(e) {
         if (!isDragging) return;
-        
-        // Prevent screen scrolling on mobile while dragging
         if(e.cancelable) e.preventDefault();
 
         const coords = getCoords(e);
@@ -267,26 +278,27 @@ function enableDrag(element, sideKey) {
         let x = coords.x - rect.left;
         let y = coords.y - rect.top;
 
-        const pad = 15; // boundary padding
+        // Dynamic padding (controls how close to edge it can go)
+        // We use 10px to allow the smaller mobile eyes to move freely
+        const pad = 10; 
+        
+        // Clamp values within the parent socket
         x = Math.max(pad, Math.min(x, rect.width - pad));
         y = Math.max(pad, Math.min(y, rect.height - pad));
 
         element.style.left = x + 'px';
         element.style.top = y + 'px';
 
-        // Normalize -1 to 1
         const nx = (x - (rect.width/2)) / (rect.width/2);
         const ny = (y - (rect.height/2)) / (rect.height/2);
 
         config.uiOffset[sideKey] = { x: nx, y: ny };
     }
 
-    // Mouse Events
     element.addEventListener('mousedown', startDrag);
     window.addEventListener('mouseup', endDrag);
     window.addEventListener('mousemove', doDrag);
 
-    // Touch Events (Passive false is important to allow preventDefault)
     element.addEventListener('touchstart', startDrag, {passive: false});
     window.addEventListener('touchend', endDrag);
     window.addEventListener('touchmove', doDrag, {passive: false});
@@ -336,7 +348,6 @@ void main() {
     vec2 aspect = vec2(uAspectRatio, 1.0);
     float radius = uFaceWidth * uRadiusMult;
     
-    // Left Eye Warp
     float distL = distance(uv * aspect, uLeftEye * aspect);
     float influenceL = smoothstep(radius, 0.0, distL);
     vec2 rotOffL;
@@ -344,7 +355,6 @@ void main() {
     rotOffL.y = uOffL.x * uSin + uOffL.y * uCos;
     uv -= rotOffL * radius * uStrength * influenceL;
 
-    // Right Eye Warp
     float distR = distance(uv * aspect, uRightEye * aspect);
     float influenceR = smoothstep(radius, 0.0, distR);
     vec2 rotOffR;
@@ -403,7 +413,6 @@ let faceData = { left: {x: 0.5, y: 0.5}, right: {x: 0.5, y: 0.5}, width: 0.1, de
 function onResults(results) {
     document.getElementById('loading').style.display = 'none';
 
-    // Resize Canvas only if dimensions changed
     if (glCanvas.width !== video.videoWidth || glCanvas.height !== video.videoHeight) {
         glCanvas.width = video.videoWidth;
         glCanvas.height = video.videoHeight;
@@ -422,7 +431,6 @@ function onResults(results) {
         const dy = faceData.right.y - faceData.left.y;
         faceData.width = Math.sqrt(dx*dx + dy*dy);
 
-        // Calculate Face Rotation (Roll) to align warp
         const len = Math.max(faceData.width, 0.001);
         config.faceAngle.cos = dx / len; 
         config.faceAngle.sin = dy / len; 

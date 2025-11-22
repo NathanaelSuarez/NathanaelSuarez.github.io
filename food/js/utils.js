@@ -17,6 +17,18 @@ export const WASTE_PENALTY = 20000;
 export const URGENCY_PENALTY_FACTOR = 5000; 
 export const LIMIT_VIOLATION_PENALTY = 8000;
 
+// --- DIVERSITY SETTINGS ---
+// How much we penalize the plan for being boring
+export const DIVERSITY_WEIGHT = 20000; 
+
+// How many nutritionally distinct items we want in the plan (minimum)
+export const MIN_UNIQUE_CLUSTERS = 40; 
+
+// The 'distance' between foods required to consider them different.
+// 0.0 = must be exact clones. 1.0 = extremely different.
+// 0.15 is a sweet spot where "Chunky PB" and "Smooth PB" are the same, but "Apple" and "Banana" are different.
+export const SIMILARITY_THRESHOLD = 0.05;
+
 
 // --- HELPER FUNCTIONS ---
 

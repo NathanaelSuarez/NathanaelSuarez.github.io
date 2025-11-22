@@ -1,5 +1,5 @@
 // ============================================================================== //
-// GENETIC OPTIMIZER.JS - WEB WORKER WITH LOCKING LOGIC
+// GENETIC OPTIMIZER.JS - WEB WORKER WITH LOCKING LOGIC & DIVERSITY CLUSTERING
 // ============================================================================== //
 
 export function runOptimizerInWorker(params, onProgress) {
@@ -10,6 +10,12 @@ export function runOptimizerInWorker(params, onProgress) {
             const PENALTY_SCALE_FACTOR = ${params.constants.PENALTY_SCALE_FACTOR};
             const WASTE_PENALTY = ${params.constants.WASTE_PENALTY};
             const LIMIT_VIOLATION_PENALTY = ${params.constants.LIMIT_VIOLATION_PENALTY};
+            
+            // New Diversity Constants
+            const DIVERSITY_WEIGHT = ${params.constants.DIVERSITY_WEIGHT || 5000};
+            const MIN_UNIQUE_CLUSTERS = ${params.constants.MIN_UNIQUE_CLUSTERS || 15};
+            const SIMILARITY_THRESHOLD = ${params.constants.SIMILARITY_THRESHOLD || 0.15};
+
             const MS_DAY = 86400000;
 
             function parseDateString(s) {
@@ -60,6 +66,58 @@ export function runOptimizerInWorker(params, onProgress) {
                             });
                         }
                     });
+
+                    // 1. GENERATE NUTRITIONAL CLUSTERS
+                    // This groups similar foods (e.g., 5 kinds of peanut butter) into one ID
+                    this.unitClusters = this._generateNutritionalClusters(units);
+                }
+
+                _generateNutritionalClusters(units) {
+                    // A. Find max values for normalization to 0-1 range
+                    const maxValues = {};
+                    MACROS.forEach(m => maxValues[m] = 1); // Avoid divide by zero
+                    
+                    units.forEach(u => {
+                        MACROS.forEach(m => {
+                            if((u.nutrients[m] || 0) > maxValues[m]) maxValues[m] = u.nutrients[m];
+                        });
+                    });
+
+                    // B. Create Cluster IDs
+                    const clusters = new Array(units.length).fill(-1);
+                    let nextClusterId = 0;
+
+                    // Helper to get normalized vector distance
+                    const getDistance = (u1, u2) => {
+                        let sumSq = 0;
+                        MACROS.forEach(m => {
+                            const v1 = (u1.nutrients[m] || 0) / maxValues[m];
+                            const v2 = (u2.nutrients[m] || 0) / maxValues[m];
+                            sumSq += (v1 - v2) ** 2;
+                        });
+                        return Math.sqrt(sumSq);
+                    };
+
+                    // C. Assign Clusters
+                    for (let i = 0; i < units.length; i++) {
+                        if (clusters[i] !== -1) continue; // Already clustered
+                        
+                        clusters[i] = nextClusterId;
+
+                        // Look for similar items to add to this cluster
+                        for (let j = i + 1; j < units.length; j++) {
+                            if (clusters[j] !== -1) continue;
+
+                            const dist = getDistance(units[i], units[j]);
+                            
+                            // If nutrition is very close, treat as same "type" of food
+                            if (dist < SIMILARITY_THRESHOLD) {
+                                clusters[j] = nextClusterId;
+                            }
+                        }
+                        nextClusterId++;
+                    }
+                    return clusters;
                 }
 
                 _calculateDayPenalty(dayTotal, dayIndex) {
@@ -96,6 +154,9 @@ export function runOptimizerInWorker(params, onProgress) {
                     const onHandConsumption = {}; 
                     const virtualConsumption = {};
                     
+                    // Diversity Tracking
+                    const usedClusterIds = new Set();
+                    
                     individual.forEach((day, unitIdx) => {
                         if (day >= 0 && day < this.totalDays) {
                             const unit = this.units[unitIdx];
@@ -107,6 +168,9 @@ export function runOptimizerInWorker(params, onProgress) {
                             } else {
                                 virtualConsumption[unit.name] = (virtualConsumption[unit.name] || 0) + 1;
                             }
+
+                            // Track Nutritional Diversity
+                            usedClusterIds.add(this.unitClusters[unitIdx]);
                         }
                     });
 
@@ -124,6 +188,13 @@ export function runOptimizerInWorker(params, onProgress) {
                             }
                         }
                     });
+
+                    // Calculate Diversity Penalty
+                    // If we use fewer nutritionally distinct items than desired, punish the plan
+                    if (usedClusterIds.size < MIN_UNIQUE_CLUSTERS) {
+                        const missingVariety = MIN_UNIQUE_CLUSTERS - usedClusterIds.size;
+                        totalPenalty += missingVariety * DIVERSITY_WEIGHT;
+                    }
                     
                     // Calculate Waste Penalty (On Hand)
                     for (const [name, info] of this.foodDbInfo.entries()) {

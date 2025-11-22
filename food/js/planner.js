@@ -229,6 +229,9 @@ export async function generatePlan(isRecalculation = false, options = {}) {
             PENALTY_SCALE_FACTOR: utils.PENALTY_SCALE_FACTOR,
             WASTE_PENALTY: utils.WASTE_PENALTY,
             LIMIT_VIOLATION_PENALTY: utils.LIMIT_VIOLATION_PENALTY,
+            DIVERSITY_WEIGHT: utils.DIVERSITY_WEIGHT,
+            MIN_UNIQUE_CLUSTERS: utils.MIN_UNIQUE_CLUSTERS,
+            SIMILARITY_THRESHOLD: utils.SIMILARITY_THRESHOLD
         }
     };
     

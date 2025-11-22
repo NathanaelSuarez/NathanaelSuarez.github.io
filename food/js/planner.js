@@ -22,11 +22,12 @@ function populateDistributorFromPlan() {
 }
 
 // Consistently calculate waste
-function calculateWasteAnalysis(inventory, consumedMap, startDate, duration) {
+function calculateWasteAnalysis(inventory, onHandConsumption, startDate, duration, shoppingList, totalConsumption) {
     const wasteAnalysis = { wasted: [], atRisk: [] };
     
+    // 1. Check on-hand inventory waste (existing logic)
     inventory.forEach(item => {
-        const consumed = consumedMap[item.name] || 0;
+        const consumed = onHandConsumption[item.name] || 0;
         const onHand = item.servings;
         
         if (onHand <= consumed) return; 
@@ -37,7 +38,7 @@ function calculateWasteAnalysis(inventory, consumedMap, startDate, duration) {
             
             if (daysUntilExpiry < duration) {
                 const unscheduled = onHand - consumed;
-                wasteAnalysis.wasted.push({ name: item.name, count: unscheduled });
+                wasteAnalysis.wasted.push({ name: item.name, count: unscheduled, source: 'on-hand' });
             } 
             else {
                 const dailyRate = consumed / duration;
@@ -47,12 +48,54 @@ function calculateWasteAnalysis(inventory, consumedMap, startDate, duration) {
                     const amountAtRisk = onHand - projectedTotalConsumption;
                     wasteAnalysis.atRisk.push({ 
                         name: item.name, 
-                        count: parseFloat(amountAtRisk.toFixed(1))
+                        count: parseFloat(amountAtRisk.toFixed(1)),
+                        source: 'on-hand'
                     });
                 }
             }
         }
     });
+    
+    // 2. NEW: Check shopping list waste
+    if (shoppingList && shoppingList.length > 0) {
+        const inventoryMap = new Map(inventory.map(item => [item.name, item]));
+        
+        shoppingList.forEach(shoppingItem => {
+            const inventoryItem = inventoryMap.get(shoppingItem.name);
+            if (!inventoryItem) return;
+            
+            const totalNeeded = totalConsumption[shoppingItem.name] || 0;
+            const onHand = inventoryItem.servings || 0;
+            const servingsNeededFromStore = Math.max(0, totalNeeded - onHand);
+            const servingsPurchased = shoppingItem.totalServings;
+            const unusedServings = servingsPurchased - servingsNeededFromStore;
+            
+            if (unusedServings > 0) {
+                const expiryDate = parseDateString(inventoryItem.expiration);
+                if (expiryDate) {
+                    const daysUntilExpiry = (expiryDate.getTime() - startDate.getTime()) / MS_DAY;
+                    
+                    // If expires during the plan, it's definite waste
+                    if (daysUntilExpiry <= duration) {
+                        wasteAnalysis.wasted.push({ 
+                            name: shoppingItem.name, 
+                            count: unusedServings,
+                            source: 'purchased' 
+                        });
+                    } 
+                    // If expires soon after the plan ends, it's at risk
+                    else if (daysUntilExpiry < duration * 1.5) {
+                        wasteAnalysis.atRisk.push({ 
+                            name: shoppingItem.name, 
+                            count: parseFloat(unusedServings.toFixed(1)),
+                            source: 'purchased'
+                        });
+                    }
+                }
+            }
+        });
+    }
+    
     return wasteAnalysis;
 }
 
@@ -346,7 +389,14 @@ export async function generatePlan(isRecalculation = false, options = {}) {
         }
     });
 
-    const wasteAnalysis = calculateWasteAnalysis(state.foodDatabase, onHandConsumption, startDate, duration);
+    const wasteAnalysis = calculateWasteAnalysis(
+    state.foodDatabase, 
+    onHandConsumption, 
+    startDate, 
+    duration,
+    shoppingList,      // NEW
+    totalConsumption   // NEW
+);
 
     const planResult = { 
         planParameters: { startDate: isoDate(startDate), endDate: isoDate(endDate), duration, originalGoals: config.macros }, 

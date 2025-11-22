@@ -12,7 +12,7 @@ export const MACRO_WEIGHTS = Object.fromEntries(MACRO_DEFINITIONS.map(m => [m.ke
 export const PENALTY_SCALE_FACTOR = 5000;
 
 // UPDATED: Set to 20000 per your request.
-export const WASTE_PENALTY = 20000; 
+export const WASTE_PENALTY = 50000; 
 
 export const URGENCY_PENALTY_FACTOR = 5000; 
 export const LIMIT_VIOLATION_PENALTY = 8000;

@@ -60,10 +60,11 @@
             display: flex;
             background-color: #FFF9C4; /* Soft pastel yellow for nav */
             border-bottom: 1px solid #e0e0e0;
+            flex-wrap: wrap;
         }
 
         .tab-link {
-            padding: 15px 25px;
+            padding: 15px 20px;
             cursor: pointer;
             border: none;
             background-color: transparent;
@@ -71,6 +72,7 @@
             font-weight: 500;
             color: #424242;
             transition: background-color 0.3s, color 0.3s;
+            flex-grow: 1;
         }
 
         .tab-link:hover {
@@ -90,6 +92,7 @@
             background-color: #ffffff;
             border: 1px solid #e0e0e0;
             border-top: none;
+            animation: fadeEffect 0.5s;
         }
 
         .tab-content.active {
@@ -108,6 +111,8 @@
             border-radius: 5px;
             overflow: hidden;
             margin-top: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background-color: #f9f9f9;
         }
 
         .pdf-viewer {
@@ -115,11 +120,27 @@
             height: 600px;
             border: none;
         }
+
+        /* Style specifically for images to make sure they fit */
+        .artifact-image {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        @keyframes fadeEffect {
+            from {opacity: 0;}
+            to {opacity: 1;}
+        }
         
         /* --- Responsive Design --- */
         @media (max-width: 768px) {
             .tab-nav {
                 flex-direction: column;
+            }
+            .tab-link {
+                text-align: left;
+                border-bottom: 1px solid #eee;
             }
         }
     </style>
@@ -128,70 +149,69 @@
 
     <header class="header">
         <h1>Nathanael's ePortfolio</h1>
-        <p>ePortfolio</p>
+        <p>Writing & Rhetoric | ENC 1102</p>
     </header>
 
     <div class="container">
         <nav class="tab-nav">
             <button class="tab-link active" onclick="openTab(event, 'home')">Home</button>
-            <button class="tab-link" onclick="openTab(event, 'generating-inquiry')">Generating Inquiry</button>
-            <button class="tab-link" onclick="openTab(event, 'information-literacy')">Information Literacy</button>
-            <button class="tab-link" onclick="openTab(event, 'research-genre-production')">Research Genre Production</button>
-            <button class="tab-link" onclick="openTab(event, 'contributing-knowledge')">Contributing Knowledge</button>
+            <button class="tab-link" onclick="openTab(event, 'generating-inquiry')">1. Inquiry</button>
+            <button class="tab-link" onclick="openTab(event, 'information-literacy')">2. Info Literacy</button>
+            <button class="tab-link" onclick="openTab(event, 'research-genre')">3. Genre</button>
+            <button class="tab-link" onclick="openTab(event, 'contributing-knowledge')">4. Contribution</button>
+            <button class="tab-link" onclick="openTab(event, 'revision')">5. Revision</button>
+            <button class="tab-link" onclick="openTab(event, 'multiple-ways')">6. Multiple Ways</button>
         </nav>
 
         <!-- Home Tab -->
         <div id="home" class="tab-content active">
             <h2>Welcome to My ePortfolio</h2>
-            <p>This portfolio showcases my work and development across key learning outcomes. Please use the tabs above to navigate through the different sections.</p>
+            <p>This portfolio showcases my work on online discourse on how irony and memetic content on the r/aliens subreddit contributes to government distrust.</p>
         </div>
 
-        <!-- Generating Inquiry Tab -->
+        <!-- Outcome 1: Generating Inquiry -->
         <div id="generating-inquiry" class="tab-content">
             <h2>Outcome 1: Generating Inquiry</h2>
             <p>
                 I think that to me, Generating Inquiry is the process of turning a general curiosity into a focused and answerable question that can be answered through research. It also involves going from a vague idea to a solid question. This process happened when I was developing the research questions for my first project. My initial interest in the r/aliens subreddit was broad because I just thought that it was interesting how people came to believe conspiracies, and I was curious about government distrust. The "Turning RTs into RQs" activity was helpful, and it helped me get a concrete set of questions to work with. I considered what was actually observable and analyzable within Reddit comments and posts. This helped me get specific researchable questions. The final question I developed "How does ironic content on the r/aliens subreddit contribute to government distrust?" is a direct result of this focused inquiry process. This artifact demonstrates my growth because it shows the exact moment my broad interest was refined into a formal academic question.
             </p>
             <div class="artifact">
-                <h3>Supporting Artifact</h3>
+                <h3>Supporting Artifact: Research Questions Draft</h3>
                 <div class="pdf-viewer-container">
-                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Generating Inquiry"></iframe>
+                    <img class="artifact-image" src="TurningRTstoRQs.png" alt="Turning RTs to RQs Assignment">
                 </div>
             </div>
         </div>
 
-        <!-- Information Literacy Tab -->
+        <!-- Outcome 2: Information Literacy -->
         <div id="information-literacy" class="tab-content">
             <h2>Outcome 2: Information Literacy</h2>
             <p>
                 I think I understand Information Literacy as the ability to evaluate a set of source's relevance, understand their arguments and figure out how they can support my project. It's about ethically and effectively putting sources into conversation with my ideas. My preliminary annotated bibliography, where I found and synthesized two academic sources, is the best artifact to show my progress here because I focused on what made each source useful to me. For example, with a nonacademic article, I identified the concept of irony poisoning becoming sincerity as a useful framework for my analysis, and I recognized that the methodology from the Godwin et al. study, which categorizes different memes into types like "Deception" and "Superiority," could provide to me a structured way for me to analyze the content on r/aliens. This process shows that I am actively evaluating different sources' methods and concepts to make myself a custom research plan, which is the definition of being information literate.
             </p>
             <div class="artifact">
-                <h3>Supporting Artifact</h3>
+                <h3>Supporting Artifact: Annotated Bibliography</h3>
                 <div class="pdf-viewer-container">
-                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Information Literacy"></iframe>
+                    <iframe class="pdf-viewer" src="annotatedbib.pdf"></iframe>
                 </div>
             </div>
         </div>
 
-        <!-- Research Genre Production Tab -->
-        <div id="research-genre-production" class="tab-content">
+        <!-- Outcome 3: Research Genre Production -->
+        <div id="research-genre" class="tab-content">
             <h2>Outcome 3: Research Genre Production</h2>
             <p>
                 I think this outcome is about understanding that academic writing uses different formats for different jobs. Each format has its own purpose and rules. The CARS model paragraph I wrote on October 1 was my first time practicing one of these formats. I followed its three main steps. First, I established a territory by citing Proferes et al. (2021) to show that online communities are a common place for political talk. Then, I established a niche by explaining that we don't know enough about how memes and irony can shape real political beliefs. Finally, I occupied the niche by stating my research question about the r/aliens subreddit. Because the structure was so clear, I learned that an introduction should get a reader interested, not just be a summary. I feel like I can use this structure again in other projects.
             </p>
-            <p>
-                I worked with another format in Writing Project 1, where I had to create two different kinds of writing in one document. For the annotated bibliography, I had to follow citation rules, summarize what each source argued, and explain how I would use it. For example, I wrote that De Wildt and Aupers’ idea of “play” and “ludic conspiracies” would help me analyze r/aliens. For the research proposal, I had to follow a different set of rules. I stated my research question, named r/aliens as my main source, explained my reasons for the project, and described my plan. Switching between these two showed me how each part helps. The bibliography helps keep my sources organized, and the proposal provides a clear plan to follow.
-            </p>
             <div class="artifact">
-                <h3>Supporting Artifact</h3>
+                <h3>Supporting Artifact: CARS Model Paragraph</h3>
                 <div class="pdf-viewer-container">
-                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Research Genre Production"></iframe>
+                    <img class="artifact-image" src="carsmodelwednessday.png" alt="CARS Model Assignment">
                 </div>
             </div>
         </div>
 
-        <!-- Contributing Knowledge Tab -->
+        <!-- Outcome 4: Contributing Knowledge -->
         <div id="contributing-knowledge" class="tab-content">
             <h2>Outcome 4: Contributing Knowledge</h2>
             <p>
@@ -200,13 +220,45 @@
             <p>
                 Seeing this mix of humor and fact-checking helped me come to my own conclusion. I argued that the ironic talk on r/aliens builds distrust in a complex way. It's not just "irony poisoning" but a mix of jokes and serious fact-checking inside the community. I connected this idea to other scholars' work to support my point. I used De Wildt and Aupers’ concept of “ludic conspiracies” to explain the playful side and Gaudette and Scrivens’ work on echo chambers to show how the subreddit tries to avoid being one.
             </p>
+            <div class="artifact">
+                <h3>Supporting Artifact: Project 2 Final Paper</h3>
+                <div class="pdf-viewer-container">
+                    <iframe class="pdf-viewer" src="FinalProject2.pdf"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- Outcome 5: Revision -->
+        <div id="revision" class="tab-content">
+            <h2>Outcome 5: Revision</h2>
             <p>
-                The “Methodologizing with Friends” assignment helped me learn how to form that conclusion. In that assignment, I collected Reddit comments and tried to label them as “ironic” or “sincere.” I remember writing, “It was kind of hard to categorize something as strictly ironic or not ironic. So I might need a framework for unclear examples.” Realizing this problem pushed me to use the “Play, Belief, Doubt” framework from my sources. This showed me that using concepts from scholars is a good way to organize and understand my own evidence.
+                I think revisionis about being willing to change your entire argument when the evidence demands it and fixing your errors. In my Self Reflection for Project 2, I documented exactly how this happened. When I first wrote my research question, I had a simple theory that I expected to find "irony poisoning" where jokes turned into sincere beliefs in a straight line. I assumed the r/aliens community was an echo chamber.
+            </p>
+            <p>
+                However, during my data collection, I found a thread debunking a UAP video. The users were using flight path data to prove the video was fake. This evidence completely contradicted my original hypothesis. I had to revise my paper to argue that the community actually has a strong culture of internal skepticism. As I wrote in my reflection: "This realization was the turning point in my analysis." This artifact demonstrates that I can negotiate differences between my assumptions and my findings and revise my work to be more accurate.
             </p>
             <div class="artifact">
-                <h3>Supporting Artifact</h3>
+                <h3>Supporting Artifact: Project 2 Self-Reflection (Excerpt)</h3>
                 <div class="pdf-viewer-container">
-                    <iframe class="pdf-viewer" src="https://www.nasa.gov/wp-content/uploads/2023/07/artemis-i-flight-test-report.pdf" title="Supporting Artifact for Contributing Knowledge"></iframe>
+                    <!-- Reuse FinalProject2.pdf -->
+                    <iframe class="pdf-viewer" src="FinalProject2.pdf#page=9"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- Outcome 6: Multiple Ways of Writing -->
+        <div id="multiple-ways" class="tab-content">
+            <h2>Outcome 6: Multiple Ways of Writing</h2>
+            <p>
+                I think that this outcome focuses on integrating multimodality like using visuals, design, and different modes of communication to support a goal. My genre Task presentation slides demonstrate this ability. Instead of just writing a paragraph about my methodology, I made a visual powerpoint to explain it.
+            </p>
+            <p>
+                On slide 5, I used a screenshot of a real Reddit thread and used handwriting annotations in red to visually demonstrate to the audience how I coded the data. This visual approach made the abstract concept of discourse coding much easier for an audience to understand instantly. By combining text, screenshots, and digital handwriting, I utilized multiple modes to communicate my research methods more effectively than text alone could have.
+            </p>
+            <div class="artifact">
+                <h3>Supporting Artifact: Presentation Slides</h3>
+                <div class="pdf-viewer-container">
+                    <iframe class="pdf-viewer" src="presentation.pdf"></iframe>
                 </div>
             </div>
         </div>
@@ -216,15 +268,21 @@
     <script>
         // JavaScript for Tab functionality
         function openTab(evt, tabName) {
-            const tabcontent = document.getElementsByClassName("tab-content");
-            for (let i = 0; i < tabcontent.length; i++) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
                 tabcontent[i].style.display = "none";
+                tabcontent[i].classList.remove("active");
             }
-            const tablinks = document.getElementsByClassName("tab-link");
-            for (let i = 0; i < tablinks.length; i++) {
+            tablinks = document.getElementsByClassName("tab-link");
+            for (i = 0; i < tablinks.length; i++) {
                 tablinks[i].className = tablinks[i].className.replace(" active", "");
             }
             document.getElementById(tabName).style.display = "block";
+            // Timeout to allow display:block to apply before adding opacity class
+            setTimeout(function() {
+                document.getElementById(tabName).classList.add("active");
+            }, 10);
             evt.currentTarget.className += " active";
         }
     </script>

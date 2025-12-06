@@ -142,7 +142,18 @@
             }
         }
     </style>
-</head>
+<style type="text/css" id="ctre_styles">
+			#ctre_wnd {
+				position: fixed; bottom: 0; right: 10px;
+				background: #fff; box-shadow: 0px 0px 40px rgba(0,0,0,0.15);
+				border-radius: 3px 3px 0 0;
+				z-index: 2147483647;
+			}
+
+			@media (prefers-color-scheme: dark) {
+				#ctre_wnd { background: #000; box-shadow: 0px 0px 40px rgba(255,255,255,0.15); }
+			}
+			</style></head>
 <body>
 
     <header class="header">
@@ -152,17 +163,17 @@
 
     <div class="container">
         <nav class="tab-nav">
-            <button class="tab-link active" onclick="openTab(event, 'home')">Home</button>
+            <button class="tab-link" onclick="openTab(event, 'home')">Home</button>
             <button class="tab-link" onclick="openTab(event, 'generating-inquiry')">1. Inquiry</button>
             <button class="tab-link" onclick="openTab(event, 'information-literacy')">2. Info Literacy</button>
             <button class="tab-link" onclick="openTab(event, 'research-genre')">3. Genre</button>
             <button class="tab-link" onclick="openTab(event, 'contributing-knowledge')">4. Contribution</button>
-            <button class="tab-link" onclick="openTab(event, 'revision')">5. Revision</button>
+            <button class="tab-link active" onclick="openTab(event, 'revision')">5. Revision</button>
             <button class="tab-link" onclick="openTab(event, 'multiple-ways')">6. Multiple Ways</button>
         </nav>
 
         <!-- Home Tab -->
-        <div id="home" class="tab-content active" style="display: block;">
+        <div id="home" class="tab-content" style="display: none;">
             <h2>Testimonio</h2>
             <p>I am a Data Science major at the Burnett Honors College at UCF. This portfolio demonstrates how I have met the six learning outcomes for ENC 1102. Please use the tabs above to view each outcome.
 </p>
@@ -269,10 +280,10 @@
         </div>
 
         <!-- Outcome 5: Revision -->
-        <div id="revision" class="tab-content" style="display: none;">
+        <div id="revision" class="tab-content active" style="display: block;">
             <h2>Outcome 5: Revision</h2>
             <p>
-                I think revision is about being willing to change your entire argument when the evidence demands it and fixing your errors. In my Self Reflection for Project 2 (At bottom of Project 2 Final Draft), I documented exactly how this happened. When I first wrote my research question, I had a simple theory that I expected to find irony poisoning where jokes turned into sincere beliefs in a straight line. I assumed the r/aliens community was an echo chamber.
+                I think revision is about being willing to change your entire argument when the evidence demands it and fixing your errors. In my Self Reflection for Project 2 (At bottom of Project 2 Final Draft), I documented exactly how this happened. When I first wrote my research question, I had a simple theory that I expected to find irony poisoning where jokes turned into sincere beliefs in a straight line. I assumed the r/aliens community was an echo chamber. I also showed revision Draft 2 to the Final Draft of Project 2 below because I recieved and followed feedback about citations and data to improve my final draft.
             </p>
             <p>
                 However, during my data collection, I found a thread debunking a UAP video. The users were using flight path data to prove the video was fake. This evidence completely contradicted my original hypothesis. I had to revise my paper to argue that the community actually has a strong culture of internal skepticism. As I wrote in my reflection: "This realization was the turning point in my analysis." The peer review assignment also helped with the revision process because it helped me find areas in my paper that needed improvement. This artifact demonstrates that I can negotiate differences between my assumptions and my findings and revise my work to be more accurate.

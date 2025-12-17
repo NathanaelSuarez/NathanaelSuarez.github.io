@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart OCR Word Search Solver</title>
+    <!-- Load Tesseract.js -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --accent: #3b82f6;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --partial: #f59e0b; /* Orange for fuzzy matches */
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--primary);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin-bottom: 5px; }
+        p.subtitle { color: #64748b; margin-top: 0; margin-bottom: 25px; }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background: var(--surface);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        label { font-weight: bold; font-size: 0.9rem; margin-bottom: 5px; display: block; }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        /* Paste Area */
+        #paste-area {
+            border: 2px dashed var(--border);
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            background: #f1f5f9;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+        }
+        #paste-area:hover { border-color: var(--accent); background: #eff6ff; color: var(--accent); }
+        #paste-area.has-image { border-color: #10b981; background: #ecfdf5; color: #059669; }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+        /* Image Preview */
+        #preview-img {
+            max-width: 100%;
+            max-height: 150px;
+            border-radius: 4px;
+            display: none;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
+
+        /* Results Grid */
+        #grid-wrapper {
+            overflow: auto;
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            min-height: 300px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 2px;
+        }
+
+        .cell {
+            background: white;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: monospace;
+            font-size: 1.1rem;
+            user-select: none;
+            border-radius: 2px;
+        }
+
+        /* Word List Badges */
+        .word-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: #e2e8f0;
+            font-size: 0.85rem;
+            color: #475569;
+            border: 1px solid transparent;
+        }
+        
+        /* Exact Match Style */
+        .badge.found { 
+            color: white; 
+            font-weight: bold; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Partial Match Style */
+        .badge.partial {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #f59e0b;
+            font-weight: bold;
+        }
+
+        /* Grid Highlighting Colors */
+        .found-cell { color: white !important; }
+        .partial-cell { 
+            background-color: #fef3c7 !important; /* Light yellow bg */
+            color: #b45309 !important;
+            border: 2px dashed #f59e0b; /* Dashed border */
+            box-sizing: border-box;
+        }
+
+        /* Color Palette for exact matches */
+        .c-0 { background: #ef4444; } .c-1 { background: #f97316; }
+        .c-2 { background: #f59e0b; } .c-3 { background: #84cc16; }
+        .c-4 { background: #10b981; } .c-5 { background: #06b6d4; }
+        .c-6 { background: #3b82f6; } .c-7 { background: #6366f1; }
+        .c-8 { background: #8b5cf6; } .c-9 { background: #ec4899; }
+
+        #status { font-weight: bold; color: var(--accent); min-height: 20px; margin-top: 10px; }
+        #procCanvas { display: none; }
+        
+        .legend { font-size: 0.8rem; color: #64748b; margin-top: 10px; display: flex; gap: 15px; }
+        .legend span { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <h1>Smart OCR Solver</h1>
+    <p class="subtitle">Paste an image. Finds exact words and "fuzzy" matches (e.g. 5/6 letters).</p>
+
+    <div class="container">
+        <!-- Input Column -->
+        <div class="panel">
+            <div>
+                <label>1. Word List</label>
+                <textarea id="wordInput">
+Farley ?
+Okra ?
+Kronos ?
+Xylophone ?
+Viotto ?
+Marguerite ?
+Bugged ?
+Tongs ?
+Nude ?
+Potato ?
+Tape ?
+Speedo ?
+Spoon ?
+Devil ?
+Raulf ?
+Mouse ?
+Lidge ?
+                </textarea>
+            </div>
+
+            <div>
+                <label>2. Paste Image (Ctrl+V)</label>
+                <div id="paste-area">
+                    <span>Click here, then Paste Image</span>
+                    <span style="font-size:0.8rem; margin-top:5px;">(or drag & drop)</span>
+                </div>
+                <img id="preview-img">
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" id="filterCheck" checked>
+                <label for="filterCheck" style="margin:0; font-weight:normal;">Enhance Image (Recommended)</label>
+            </div>
+
+            <button id="solveBtn">Solve Puzzle</button>
+            <div id="status"></div>
+        </div>
+
+        <!-- Output Column -->
+        <div class="panel">
+            <label>3. Results</label>
+            
+            <div class="legend">
+                <span><span class="dot" style="background:#3b82f6;"></span> Exact Match</span>
+                <span><span class="dot" style="background:#f59e0b;"></span> Partial Match</span>
+                <span><span class="dot" style="background:#e2e8f0;"></span> Not Found</span>
+            </div>
+
+            <div class="word-list" id="wordBadges"></div>
+            
+            <div id="grid-wrapper">
+                <div style="color:#94a3b8; font-style:italic;">Grid will appear here...</div>
+            </div>
+            
+            <!-- Hidden text area for debugging OCR raw output -->
+            <textarea id="rawText" style="height:50px; display:none;" readonly></textarea>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for processing -->
+    <canvas id="procCanvas"></canvas>
+
+    <script>
+        const solveBtn = document.getElementById('solveBtn');
+        const statusEl = document.getElementById('status');
+        const pasteArea = document.getElementById('paste-area');
+        const previewImg = document.getElementById('preview-img');
+        const procCanvas = document.getElementById('procCanvas');
+        const gridWrapper = document.getElementById('grid-wrapper');
+        const wordBadges = document.getElementById('wordBadges');
+        const rawTextArea = document.getElementById('rawText');
+
+        let pastedImage = null;
+
+        // --- PASTE LOGIC ---
+        pasteArea.addEventListener('click', async () => {
+            try {
+                const items = await navigator.clipboard.read();
+                for (let item of items) {
+                    if (item.types.includes('image/png') || item.types.includes('image/jpeg')) {
+                        const blob = await item.getType(item.types.find(t => t.startsWith('image/')));
+                        handleImage(blob);
+                        return;
+                    }
+                }
+                alert("No image found in clipboard.");
+            } catch (err) {
+                // Fallback for older browsers or permission issues
+                pasteArea.innerText = "Paste not accessible. Try using Ctrl+V on page.";
+            }
+        });
+
+        document.addEventListener('paste', (event) => {
+            if (event.clipboardData && event.clipboardData.files.length > 0) {
+                handleImage(event.clipboardData.files[0]);
+            }
+        });
+
+        pasteArea.addEventListener('dragover', (e) => { e.preventDefault(); pasteArea.style.background = '#e0f2fe'; });
+        pasteArea.addEventListener('dragleave', (e) => { pasteArea.style.background = '#f1f5f9'; });
+        pasteArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pasteArea.style.background = '#f1f5f9';
+            if (e.dataTransfer.files.length > 0) handleImage(e.dataTransfer.files[0]);
+        });
+
+        function handleImage(blob) {
+            if (!blob.type.startsWith('image/')) return;
+            pastedImage = blob;
+            previewImg.src = URL.createObjectURL(blob);
+            previewImg.style.display = 'block';
+            pasteArea.classList.add('has-image');
+            pasteArea.innerHTML = "<span>Image Ready!</span>";
+        }
+
+        // --- SOLVER LOGIC ---
+        solveBtn.addEventListener('click', async () => {
+            const rawWords = document.getElementById('wordInput').value;
+            if(!pastedImage) return alert("Please paste an image first.");
+
+            const words = rawWords.split('\n')
+                .map(w => w.replace(/\?/g, '').trim().toUpperCase())
+                .filter(w => w.length > 0);
+
+            if(words.length === 0) return alert("Please enter words.");
+
+            solveBtn.disabled = true;
+            statusEl.textContent = "Processing Image...";
+
+            try {
+                // 1. Preprocess
+                let imageToScan = pastedImage;
+                if(document.getElementById('filterCheck').checked) {
+                    statusEl.textContent = "Enhancing contrast...";
+                    imageToScan = await preprocessImage(pastedImage);
+                }
+
+                // 2. OCR
+                statusEl.textContent = "Reading text (OCR)...";
+                const worker = await Tesseract.createWorker('eng');
+                await worker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+                });
+                
+                const { data: { text } } = await worker.recognize(imageToScan);
+                await worker.terminate();
+                rawTextArea.value = text;
+
+                // 3. Parse Grid
+                statusEl.textContent = "Analyzing Grid...";
+                const grid = parseGrid(text);
+                if(grid.length < 2) throw new Error("Could not detect a valid grid. Image might be too blurry.");
+
+                // 4. Solve (Exact + Fuzzy)
+                renderGrid(grid);
+                statusEl.textContent = "Searching words...";
+                const results = solve(grid, words);
+
+                // 5. Display
+                highlight(results);
+                renderBadges(words, results);
+
+                const foundCount = results.filter(r => r.type === 'exact').length;
+                const partialCount = results.filter(r => r.type === 'partial').length;
+                statusEl.textContent = `Done! Exact: ${foundCount}, Partial: ${partialCount}, Total: ${words.length}`;
+
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = "Error: " + err.message;
+            } finally {
+                solveBtn.disabled = false;
+            }
+        });
+
+        // --- IMAGE PROCESSING ---
+        function preprocessImage(imageBlob) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ctx = procCanvas.getContext('2d');
+                    procCanvas.width = img.width;
+                    procCanvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    const imgData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+                    const d = imgData.data;
+                    
+                    // Grayscale + Heavy Threshold
+                    for (let i = 0; i < d.length; i += 4) {
+                        const r=d[i], g=d[i+1], b=d[i+2];
+                        const v = 0.2126*r + 0.7152*g + 0.0722*b;
+                        // If light enough, make white, else black
+                        d[i] = d[i+1] = d[i+2] = (v > 100) ? 255 : 0;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    resolve(procCanvas.toDataURL('image/png'));
+                };
+                img.src = URL.createObjectURL(imageBlob);
+            });
+        }
+
+        // --- GRID PARSING ---
+        function parseGrid(text) {
+            const lines = text.split('\n')
+                .map(l => l.replace(/[^A-Z]/g, ''))
+                .filter(l => l.length > 0);
+            if(lines.length === 0) return [];
+            
+            // Determine most common line length
+            const lens = lines.map(l => l.length);
+            const mode = lens.sort((a,b) => lens.filter(v=>v===a).length - lens.filter(v=>v===b).length).pop();
+
+            // Sanitize
+            return lines
+                .filter(l => Math.abs(l.length - mode) < 5)
+                .map(l => {
+                    const row = l.split('');
+                    if(row.length > mode) return row.slice(0, mode);
+                    while(row.length < mode) row.push('?'); // Use ? for missing
+                    return row;
+                });
+        }
+
+        function renderGrid(grid) {
+            gridWrapper.innerHTML = '';
+            const el = document.createElement('div');
+            el.className = 'grid';
+            el.style.gridTemplateColumns = `repeat(${grid[0].length}, 1fr)`;
+            
+            grid.forEach((row, r) => {
+                row.forEach((char, c) => {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `c-${r}-${c}`;
+                    cell.textContent = char;
+                    el.appendChild(cell);
+                });
+            });
+            gridWrapper.appendChild(el);
+        }
+
+        // --- SOLVER ALGORITHM (Exact + Fuzzy) ---
+        function solve(grid, words) {
+            const results = [];
+            const R = grid.length;
+            const C = grid[0].length;
+            const dirs = [[0,1], [1,0], [1,1], [-1,1], [0,-1], [-1,0], [-1,-1], [1,-1]];
+
+            words.forEach(word => {
+                let bestMatch = null;
+                
+                // Scan grid
+                for(let r=0; r<R; r++) {
+                    for(let c=0; c<C; c++) {
+                        
+                        for(let d=0; d<dirs.length; d++) {
+                            const [dr, dc] = dirs[d];
+                            
+                            // Check boundary immediately
+                            if (!checkBounds(R, C, r, c, dr, dc, word.length)) continue;
+
+                            // Calculate Match Score
+                            const { matchCount, path } = checkMatch(grid, r, c, dr, dc, word);
+                            
+                            // 1. Exact Match? Stop searching for this word.
+                            if (matchCount === word.length) {
+                                results.push({ word, type: 'exact', path, score: `${word.length}/${word.length}` });
+                                return; // Next word
+                            }
+
+                            // 2. Partial Match Logic
+                            // Threshold: Allow 1 error for words < 6, 2 errors for words >= 6
+                            // Or simpler: > 70% match
+                            const threshold = Math.max(word.length - 2, Math.ceil(word.length * 0.70));
+                            
+                            if (matchCount >= threshold) {
+                                // Keep the best partial match found so far
+                                if (!bestMatch || matchCount > bestMatch.matchCount) {
+                                    bestMatch = { word, type: 'partial', path, matchCount, score: `${matchCount}/${word.length}` };
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If no exact match found, but we have a partial one, add it
+                if (bestMatch) {
+                    results.push(bestMatch);
+                }
+            });
+            return results;
+        }
+
+        function checkBounds(rows, cols, r, c, dr, dc, len) {
+            const lastR = r + (len-1)*dr;
+            const lastC = c + (len-1)*dc;
+            return (lastR >= 0 && lastR < rows && lastC >= 0 && lastC < cols);
+        }
+
+        function checkMatch(grid, r, c, dr, dc, word) {
+            let matchCount = 0;
+            const path = [];
+            for(let i=0; i<word.length; i++) {
+                const nr = r + i*dr;
+                const nc = c + i*dc;
+                const gridChar = grid[nr][nc];
+                path.push({r:nr, c:nc});
+                if (gridChar === word[i]) matchCount++;
+            }
+            return { matchCount, path };
+        }
+
+        // --- HIGHLIGHTING ---
+        function highlight(results) {
+            results.forEach((res, i) => {
+                if (res.type === 'exact') {
+                    const color = `c-${i % 10}`;
+                    res.path.forEach(p => {
+                        const cell = document.getElementById(`c-${p.r}-${p.c}`);
+                        if(cell) cell.classList.add('found-cell', color);
+                    });
+                } else if (res.type === 'partial') {
+                    res.path.forEach(p => {
+                        const cell = document.getElementById(`c-${p.r}-${p.c}`);
+                        // Only color if not already part of an exact match (to avoid clutter)
+                        if(cell && !cell.classList.contains('found-cell')) {
+                            cell.classList.add('partial-cell');
+                        }
+                    });
+                }
+            });
+        }
+
+        function renderBadges(allWords, results) {
+            wordBadges.innerHTML = '';
+            
+            allWords.forEach(w => {
+                const res = results.find(r => r.word === w);
+                const span = document.createElement('div');
+                span.className = 'badge';
+                
+                if (res) {
+                    if (res.type === 'exact') {
+                        span.textContent = w;
+                        // Find index in results to match color
+                        const idx = results.indexOf(res);
+                        span.classList.add('found', `c-${idx % 10}`);
+                    } else {
+                        span.textContent = `${w} (${res.score})`;
+                        span.classList.add('partial');
+                        span.title = "Not all letters matched perfectly";
+                    }
+                } else {
+                    span.textContent = w;
+                }
+                wordBadges.appendChild(span);
+            });
+        }
+    </script>
+</body>
+</html>

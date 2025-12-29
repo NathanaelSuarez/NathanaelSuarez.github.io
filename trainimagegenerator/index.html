@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Diffusion Model Trainer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 20px;
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .panel h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+            padding-bottom: 10px;
+        }
+        
+        .upload-area {
+            border: 2px dashed rgba(0, 212, 255, 0.5);
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        .upload-area.dragover {
+            border-color: #00ff88;
+            background: rgba(0, 255, 136, 0.1);
+        }
+        
+        .image-preview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .image-preview img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .image-count {
+            text-align: center;
+            color: #888;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input[type="range"] {
+            width: 100%;
+            accent-color: #00d4ff;
+        }
+        
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+        
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+        
+        .value-display {
+            text-align: right;
+            color: #00d4ff;
+            font-size: 0.85rem;
+            margin-top: 3px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #00d4ff;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #000;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #ff6b6b 0%, #cc5555 100%);
+            color: #fff;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+            color: #000;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .center-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .training-area {
+            flex: 1;
+        }
+        
+        .canvas-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .canvas-container h3 {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+        
+        #lossChart {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+        
+        .generated-images {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        
+        .generated-images canvas {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            image-rendering: pixelated;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        
+        .log-area {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            color: #888;
+        }
+        
+        .log-entry.info { color: #00d4ff; }
+        .log-entry.success { color: #00ff88; }
+        .log-entry.error { color: #ff6b6b; }
+        .log-entry.warning { color: #ffaa00; }
+        
+        .model-viz {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .layer-block {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .layer-block .layer-name { color: #00d4ff; }
+        .layer-block .layer-params { color: #888; }
+        
+        .arrow {
+            text-align: center;
+            color: #444;
+            font-size: 1.2rem;
+        }
+        
+        .resolution-badge {
+            display: inline-block;
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .section-divider {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 20px 0;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Browser Diffusion Model Trainer</h1>
+        
+        <div class="main-grid">
+            <!-- Left Panel - Data Upload -->
+            <div class="panel">
+                <h2>📁 Training Data</h2>
+                
+                <div class="form-group">
+                    <label>Image Resolution</label>
+                    <select id="imageResolution">
+                        <option value="32">32×32 (Fast)</option>
+                        <option value="64">64×64 (Better Quality)</option>
+                    </select>
+                </div>
+                
+                <div class="upload-area" id="uploadArea">
+                    <div>📤</div>
+                    <div style="margin-top: 10px;">Drop images here or click to upload</div>
+                    <div style="font-size: 0.8rem; color: #666; margin-top: 5px;" id="resolutionHint">Images will be resized to 32×32</div>
+                    <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                </div>
+                
+                <div class="image-preview" id="imagePreview"></div>
+                <div class="image-count" id="imageCount">No images loaded</div>
+                
+                <button class="btn btn-secondary" id="clearImages" style="margin-top: 15px;">Clear All Images</button>
+                
+                <div class="section-divider"></div>
+                
+                <h2>⚙️ Training Settings</h2>
+                
+                <div class="form-group">
+                    <label>Learning Rate</label>
+                    <input type="range" id="learningRate" min="-5" max="-2" step="0.1" value="-3">
+                    <div class="value-display" id="lrDisplay">0.001</div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Batch Size</label>
+                    <select id="batchSize">
+                        <option value="2">2 (for 64×64)</option>
+                        <option value="4">4</option>
+                        <option value="8" selected>8</option>
+                        <option value="16">16</option>
+                        <option value="32">32</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Epochs</label>
+                    <input type="number" id="epochs" value="50" min="1" max="1000">
+                </div>
+            </div>
+            
+            <!-- Center Panel - Training & Output -->
+            <div class="center-panel">
+                <div class="panel training-area">
+                    <h2>📊 Training Progress</h2>
+                    
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="currentEpoch">0</div>
+                            <div class="stat-label">Epoch</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="currentLoss">--</div>
+                            <div class="stat-label">Loss</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="samplesProcessed">0</div>
+                            <div class="stat-label">Samples</div>
+                        </div>
+                    </div>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    
+                    <div class="canvas-container" style="margin-top: 20px;">
+                        <h3>Loss Over Time</h3>
+                        <canvas id="lossChart"></canvas>
+                    </div>
+                    
+                    <div class="log-area" id="logArea">
+                        <div class="log-entry info">Ready to train. Upload images to begin.</div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button class="btn btn-primary" id="startTraining" disabled>▶️ Start Training</button>
+                        <button class="btn btn-secondary" id="stopTraining" disabled>⏹️ Stop</button>
+                    </div>
+                </div>
+                
+                <div class="panel">
+                    <h2>🖼️ Generated Samples <span class="resolution-badge" id="genResolutionBadge">32×32</span></h2>
+                    
+                    <div class="generated-images" id="generatedImages">
+                        <canvas id="gen0" width="32" height="32"></canvas>
+                        <canvas id="gen1" width="32" height="32"></canvas>
+                        <canvas id="gen2" width="32" height="32"></canvas>
+                        <canvas id="gen3" width="32" height="32"></canvas>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label>Sampling Steps</label>
+                        <input type="range" id="samplingSteps" min="1" max="50" value="20">
+                        <div class="value-display" id="stepsDisplay">20 steps</div>
+                    </div>
+                    
+                    <button class="btn btn-success" id="generateSamples" disabled>✨ Generate Samples</button>
+                </div>
+            </div>
+            
+            <!-- Right Panel - Model Editor -->
+            <div class="panel">
+                <h2>🔧 Model Architecture</h2>
+                
+                <div class="form-group">
+                    <label>Base Channels</label>
+                    <select id="baseChannels">
+                        <option value="16">16 (Tiny)</option>
+                        <option value="32" selected>32 (Small)</option>
+                        <option value="48">48 (Medium)</option>
+                        <option value="64">64 (Large)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Channel Multipliers</label>
+                    <select id="channelMult">
+                        <option value="1,2,2">1,2,2 (Small)</option>
+                        <option value="1,2,4" selected>1,2,4 (Medium)</option>
+                        <option value="1,2,4,8">1,2,4,8 (Large - for 64×64)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Norm Groups</label>
+                    <select id="normGroups">
+                        <option value="4">4 groups</option>
+                        <option value="8" selected>8 groups</option>
+                        <option value="16">16 groups</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Dropout</label>
+                    <input type="range" id="dropout" min="0" max="0.3" step="0.05" value="0">
+                    <div class="value-display" id="dropoutDisplay">0.00</div>
+                </div>
+                
+                <button class="btn btn-primary" id="buildModel">🔨 Build Model</button>
+                
+                <div class="model-viz" id="modelViz">
+                    <div style="text-align: center; color: #666;">
+                        Click "Build Model" to see architecture
+                    </div>
+                </div>
+                
+                <div class="section-divider"></div>
+                
+                <h2>💾 Model I/O</h2>
+                
+                <button class="btn btn-primary" id="saveModel" disabled>💾 Save Model</button>
+                <button class="btn btn-secondary" id="loadModel" style="margin-top: 10px;">📂 Load Model</button>
+                <input type="file" id="modelFileInput" accept=".json" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== GLOBALS ====================
+        let uploadedImages = [];
+        let trainingData = null;
+        let model = null;
+        let isTraining = false;
+        let lossHistory = [];
+        let totalSamplesProcessed = 0;
+        let currentResolution = 32;
+        
+        // ==================== UI ELEMENTS ====================
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const imageCount = document.getElementById('imageCount');
+        const clearImagesBtn = document.getElementById('clearImages');
+        const startTrainingBtn = document.getElementById('startTraining');
+        const stopTrainingBtn = document.getElementById('stopTraining');
+        const generateSamplesBtn = document.getElementById('generateSamples');
+        const buildModelBtn = document.getElementById('buildModel');
+        const saveModelBtn = document.getElementById('saveModel');
+        const loadModelBtn = document.getElementById('loadModel');
+        const modelFileInput = document.getElementById('modelFileInput');
+        const logArea = document.getElementById('logArea');
+        const lossChart = document.getElementById('lossChart');
+        const lossCtx = lossChart.getContext('2d');
+        const imageResolutionSelect = document.getElementById('imageResolution');
+        const resolutionHint = document.getElementById('resolutionHint');
+        const genResolutionBadge = document.getElementById('genResolutionBadge');
+        
+        // ==================== LOGGING ====================
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+        
+        // ==================== RESOLUTION HANDLING ====================
+        imageResolutionSelect.addEventListener('change', (e) => {
+            const newRes = parseInt(e.target.value);
+            if (uploadedImages.length > 0) {
+                log(`Warning: Changing resolution will clear existing images`, 'warning');
+                if (confirm('Changing resolution will clear all uploaded images. Continue?')) {
+                    clearAllImages();
+                    currentResolution = newRes;
+                } else {
+                    e.target.value = currentResolution;
+                    return;
+                }
+            }
+            currentResolution = newRes;
+            resolutionHint.textContent = `Images will be resized to ${currentResolution}×${currentResolution}`;
+            genResolutionBadge.textContent = `${currentResolution}×${currentResolution}`;
+            updateGeneratedCanvases();
+            log(`Resolution set to ${currentResolution}×${currentResolution}`);
+            
+            // Suggest appropriate batch size
+            if (currentResolution === 64) {
+                document.getElementById('batchSize').value = '4';
+                log('Batch size reduced to 4 for 64×64 (memory optimization)', 'info');
+            }
+        });
+        
+        function updateGeneratedCanvases() {
+            for (let i = 0; i < 4; i++) {
+                const canvas = document.getElementById(`gen${i}`);
+                canvas.width = currentResolution;
+                canvas.height = currentResolution;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(0, 0, currentResolution, currentResolution);
+            }
+        }
+        
+        // ==================== IMAGE HANDLING ====================
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        
+        async function handleFiles(files) {
+            const fileArray = Array.from(files).filter(f => f.type.startsWith('image/'));
+            log(`Loading ${fileArray.length} images at ${currentResolution}×${currentResolution}...`);
+            
+            for (const file of fileArray) {
+                try {
+                    const img = await loadImage(file);
+                    const tensor = await imageToTensor(img);
+                    uploadedImages.push({ tensor, preview: img });
+                } catch (err) {
+                    log(`Failed to load ${file.name}: ${err.message}`, 'error');
+                }
+            }
+            
+            updateImagePreview();
+            updateDataset();
+            log(`Loaded ${uploadedImages.length} images total`, 'success');
+        }
+        
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+        
+        async function imageToTensor(img) {
+            const size = currentResolution;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, size, size);
+            
+            const imageData = ctx.getImageData(0, 0, size, size);
+            const data = new Float32Array(size * size * 3);
+            
+            for (let i = 0; i < size * size; i++) {
+                data[i * 3] = (imageData.data[i * 4] / 255) * 2 - 1;
+                data[i * 3 + 1] = (imageData.data[i * 4 + 1] / 255) * 2 - 1;
+                data[i * 3 + 2] = (imageData.data[i * 4 + 2] / 255) * 2 - 1;
+            }
+            
+            return tf.tensor3d(data, [size, size, 3]);
+        }
+        
+        function updateImagePreview() {
+            imagePreview.innerHTML = '';
+            const previewCount = Math.min(6, uploadedImages.length);
+            for (let i = 0; i < previewCount; i++) {
+                const canvas = document.createElement('canvas');
+                canvas.width = currentResolution;
+                canvas.height = currentResolution;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(uploadedImages[i].preview, 0, 0, currentResolution, currentResolution);
+                
+                const imgEl = document.createElement('img');
+                imgEl.src = canvas.toDataURL();
+                imagePreview.appendChild(imgEl);
+            }
+            
+            if (uploadedImages.length > 6) {
+                imageCount.textContent = `Showing 6 of ${uploadedImages.length} images (${currentResolution}×${currentResolution})`;
+            } else {
+                imageCount.textContent = `${uploadedImages.length} images loaded (${currentResolution}×${currentResolution})`;
+            }
+        }
+        
+        function updateDataset() {
+            if (uploadedImages.length > 0) {
+                trainingData = tf.stack(uploadedImages.map(img => img.tensor));
+                startTrainingBtn.disabled = model === null;
+            } else {
+                trainingData = null;
+                startTrainingBtn.disabled = true;
+            }
+        }
+        
+        function clearAllImages() {
+            uploadedImages.forEach(img => img.tensor.dispose());
+            uploadedImages = [];
+            if (trainingData) {
+                trainingData.dispose();
+                trainingData = null;
+            }
+            updateImagePreview();
+            imageCount.textContent = 'No images loaded';
+            startTrainingBtn.disabled = true;
+        }
+        
+        clearImagesBtn.addEventListener('click', () => {
+            clearAllImages();
+            log('Cleared all images');
+        });
+        
+        // ==================== GROUP NORMALIZATION ====================
+        function groupNorm(x, gamma, beta, numGroups, eps = 1e-5) {
+            return tf.tidy(() => {
+                const [batch, height, width, channels] = x.shape;
+                const channelsPerGroup = Math.floor(channels / numGroups);
+                
+                // Reshape: [N, H, W, G, C/G]
+                const xReshaped = tf.reshape(x, [batch, height, width, numGroups, channelsPerGroup]);
+                
+                // Compute mean/var over H, W, C/G (axes 1, 2, 4)
+                const moments = tf.moments(xReshaped, [1, 2, 4], true);
+                
+                // Normalize
+                const xNorm = tf.div(
+                    tf.sub(xReshaped, moments.mean),
+                    tf.sqrt(tf.add(moments.variance, eps))
+                );
+                
+                // Reshape back
+                const xNormReshaped = tf.reshape(xNorm, [batch, height, width, channels]);
+                
+                // Scale and shift
+                return tf.add(tf.mul(xNormReshaped, gamma), beta);
+            });
+        }
+        
+        // ==================== MODEL ARCHITECTURE ====================
+        class SinusoidalEmbedding {
+            constructor(dim) {
+                this.dim = dim;
+            }
+            
+            apply(t) {
+                return tf.tidy(() => {
+                    const halfDim = Math.floor(this.dim / 2);
+                    const embScale = Math.log(10000) / (halfDim - 1);
+                    const emb = tf.exp(tf.mul(tf.range(0, halfDim, 1, 'float32'), -embScale));
+                    const angles = tf.outerProduct(t, emb);
+                    return tf.concat([tf.sin(angles), tf.cos(angles)], 1);
+                });
+            }
+        }
+        
+        function swish(x) {
+            return tf.mul(x, tf.sigmoid(x));
+        }
+        
+        function buildModel(config) {
+            const baseChannels = config.baseChannels;
+            const condDim = baseChannels * 4;
+            const channels = config.channelMult.map(m => baseChannels * m);
+            const numGroups = config.normGroups;
+            const resolution = config.resolution || 32;
+            
+            const heInit = (shape) => {
+                const fanIn = shape.slice(0, -1).reduce((a, b) => a * b, 1);
+                return tf.randomNormal(shape).mul(Math.sqrt(2.0 / fanIn));
+            };
+            
+            return {
+                config,
+                baseChannels,
+                condDim,
+                channels,
+                numGroups,
+                resolution,
+                sinEmb: new SinusoidalEmbedding(baseChannels),
+                weights: null,
+                
+                init() {
+                    if (this.weights) return;
+                    
+                    this.weights = {
+                        // Time embedding
+                        timeDense1: tf.variable(heInit([baseChannels, condDim])),
+                        timeBias1: tf.variable(tf.zeros([condDim])),
+                        timeDense2: tf.variable(heInit([condDim, condDim])),
+                        timeBias2: tf.variable(tf.zeros([condDim])),
+                        
+                        // Initial conv
+                        convIn: tf.variable(heInit([3, 3, 3, baseChannels])),
+                        convInBias: tf.variable(tf.zeros([baseChannels])),
+                        
+                        enc: [],
+                        dec: [],
+                        
+                        // Final layers
+                        finalNormG: tf.variable(tf.ones([baseChannels])),
+                        finalNormB: tf.variable(tf.zeros([baseChannels])),
+                        convOut: tf.variable(tf.zeros([3, 3, baseChannels, 3])),
+                        convOutBias: tf.variable(tf.zeros([3]))
+                    };
+                    
+                    // Build encoder
+                    let inCh = baseChannels;
+                    for (let i = 0; i < channels.length; i++) {
+                        const outCh = channels[i];
+                        const g = Math.min(numGroups, inCh, outCh);
+                        
+                        this.weights.enc.push({
+                            norm1G: tf.variable(tf.ones([inCh])),
+                            norm1B: tf.variable(tf.zeros([inCh])),
+                            conv1: tf.variable(heInit([3, 3, inCh, outCh])),
+                            conv1B: tf.variable(tf.zeros([outCh])),
+                            
+                            timeProj: tf.variable(heInit([condDim, outCh])),
+                            timeProjB: tf.variable(tf.zeros([outCh])),
+                            
+                            norm2G: tf.variable(tf.ones([outCh])),
+                            norm2B: tf.variable(tf.zeros([outCh])),
+                            conv2: tf.variable(tf.zeros([3, 3, outCh, outCh])),
+                            conv2B: tf.variable(tf.zeros([outCh])),
+                            
+                            skip: inCh !== outCh ? tf.variable(heInit([1, 1, inCh, outCh])) : null,
+                            groups: g,
+                            inCh, outCh
+                        });
+                        inCh = outCh;
+                    }
+                    
+                    // Build decoder with proper residuals
+                    for (let i = channels.length - 1; i >= 0; i--) {
+                        const outCh = channels[i];
+                        const skipCh = channels[i];
+                        const combCh = inCh + skipCh;
+                        const g = Math.min(numGroups, combCh, outCh);
+                        
+                        this.weights.dec.push({
+                            norm1G: tf.variable(tf.ones([combCh])),
+                            norm1B: tf.variable(tf.zeros([combCh])),
+                            conv1: tf.variable(heInit([3, 3, combCh, outCh])),
+                            conv1B: tf.variable(tf.zeros([outCh])),
+                            
+                            timeProj: tf.variable(heInit([condDim, outCh])),
+                            timeProjB: tf.variable(tf.zeros([outCh])),
+                            
+                            norm2G: tf.variable(tf.ones([outCh])),
+                            norm2B: tf.variable(tf.zeros([outCh])),
+                            conv2: tf.variable(tf.zeros([3, 3, outCh, outCh])),
+                            conv2B: tf.variable(tf.zeros([outCh])),
+                            
+                            // KEY FIX: Residual projection for decoder
+                            residualProj: tf.variable(heInit([1, 1, combCh, outCh])),
+                            
+                            groups: g,
+                            combCh, outCh
+                        });
+                        inCh = outCh;
+                    }
+                },
+                
+                forward(x, t, training = false) {
+                    this.init();
+                    
+                    return tf.tidy(() => {
+                        // Time embedding
+                        let tEmb = this.sinEmb.apply(t);
+                        tEmb = swish(tf.add(tf.matMul(tEmb, this.weights.timeDense1), this.weights.timeBias1));
+                        tEmb = tf.add(tf.matMul(tEmb, this.weights.timeDense2), this.weights.timeBias2);
+                        
+                        // Initial conv
+                        let h = tf.add(tf.conv2d(x, this.weights.convIn, 1, 'same'), this.weights.convInBias);
+                        
+                        // Encoder
+                        const skips = [];
+                        for (let i = 0; i < this.weights.enc.length; i++) {
+                            const w = this.weights.enc[i];
+                            const g1 = Math.min(this.numGroups, w.inCh);
+                            const g2 = Math.min(this.numGroups, w.outCh);
+                            
+                            // ResBlock
+                            let h1 = groupNorm(h, w.norm1G, w.norm1B, g1);
+                            h1 = swish(h1);
+                            h1 = tf.add(tf.conv2d(h1, w.conv1, 1, 'same'), w.conv1B);
+                            
+                            // Add time embedding
+                            const tProj = tf.add(tf.matMul(swish(tEmb), w.timeProj), w.timeProjB);
+                            h1 = tf.add(h1, tf.reshape(tProj, [-1, 1, 1, w.outCh]));
+                            
+                            h1 = groupNorm(h1, w.norm2G, w.norm2B, g2);
+                            h1 = swish(h1);
+                            if (training && this.config.dropout > 0) {
+                                h1 = tf.dropout(h1, this.config.dropout);
+                            }
+                            h1 = tf.add(tf.conv2d(h1, w.conv2, 1, 'same'), w.conv2B);
+                            
+                            // Residual
+                            const skip = w.skip ? tf.conv2d(h, w.skip, 1, 'same') : h;
+                            h = tf.add(h1, skip);
+                            skips.push(h);
+                            
+                            // Downsample
+                            if (i < this.weights.enc.length - 1) {
+                                h = tf.avgPool(h, 2, 2, 'same');
+                            }
+                        }
+                        
+                        // Decoder
+                        for (let i = 0; i < this.weights.dec.length; i++) {
+                            const w = this.weights.dec[i];
+                            const skipIdx = this.weights.dec.length - 1 - i;
+                            
+                            // Upsample
+                            if (i > 0) {
+                                h = tf.image.resizeNearestNeighbor(h, [h.shape[1] * 2, h.shape[2] * 2]);
+                            }
+                            
+                            // Concat skip
+                            h = tf.concat([h, skips[skipIdx]], -1);
+                            const hInput = h; // Save for residual
+                            
+                            const g1 = Math.min(this.numGroups, w.combCh);
+                            const g2 = Math.min(this.numGroups, w.outCh);
+                            
+                            // ResBlock
+                            let h1 = groupNorm(h, w.norm1G, w.norm1B, g1);
+                            h1 = swish(h1);
+                            h1 = tf.add(tf.conv2d(h1, w.conv1, 1, 'same'), w.conv1B);
+                            
+                            // Time embedding
+                            const tProj = tf.add(tf.matMul(swish(tEmb), w.timeProj), w.timeProjB);
+                            h1 = tf.add(h1, tf.reshape(tProj, [-1, 1, 1, w.outCh]));
+                            
+                            h1 = groupNorm(h1, w.norm2G, w.norm2B, g2);
+                            h1 = swish(h1);
+                            if (training && this.config.dropout > 0) {
+                                h1 = tf.dropout(h1, this.config.dropout);
+                            }
+                            h1 = tf.add(tf.conv2d(h1, w.conv2, 1, 'same'), w.conv2B);
+                            
+                            // KEY FIX: Add residual projection
+                            const hResidual = tf.conv2d(hInput, w.residualProj, 1, 'same');
+                            h = tf.add(h1, hResidual);
+                        }
+                        
+                        // Output
+                        const gFinal = Math.min(this.numGroups, this.baseChannels);
+                        h = groupNorm(h, this.weights.finalNormG, this.weights.finalNormB, gFinal);
+                        h = swish(h);
+                        return tf.add(tf.conv2d(h, this.weights.convOut, 1, 'same'), this.weights.convOutBias);
+                    });
+                },
+                
+                getTrainableWeights() {
+                    this.init();
+                    const w = this.weights;
+                    const result = [
+                        w.timeDense1, w.timeBias1, w.timeDense2, w.timeBias2,
+                        w.convIn, w.convInBias,
+                        w.finalNormG, w.finalNormB, w.convOut, w.convOutBias
+                    ];
+                    
+                    for (const enc of w.enc) {
+                        result.push(enc.norm1G, enc.norm1B, enc.conv1, enc.conv1B);
+                        result.push(enc.timeProj, enc.timeProjB);
+                        result.push(enc.norm2G, enc.norm2B, enc.conv2, enc.conv2B);
+                        if (enc.skip) result.push(enc.skip);
+                    }
+                    
+                    for (const dec of w.dec) {
+                        result.push(dec.norm1G, dec.norm1B, dec.conv1, dec.conv1B);
+                        result.push(dec.timeProj, dec.timeProjB);
+                        result.push(dec.norm2G, dec.norm2B, dec.conv2, dec.conv2B);
+                        result.push(dec.residualProj);
+                    }
+                    
+                    return result;
+                },
+                
+                getParamCount() {
+                    return this.getTrainableWeights().reduce((sum, w) => sum + w.size, 0);
+                }
+            };
+        }
+        
+        // ==================== MODEL BUILDING ====================
+        buildModelBtn.addEventListener('click', () => {
+            const config = {
+                baseChannels: parseInt(document.getElementById('baseChannels').value),
+                channelMult: document.getElementById('channelMult').value.split(',').map(Number),
+                normGroups: parseInt(document.getElementById('normGroups').value),
+                dropout: parseFloat(document.getElementById('dropout').value),
+                resolution: currentResolution
+            };
+            
+            try {
+                // Dispose old model weights
+                if (model && model.weights) {
+                    const weights = model.getTrainableWeights();
+                    weights.forEach(w => w.dispose());
+                }
+                
+                model = buildModel(config);
+                model.init();
+                const paramCount = model.getParamCount();
+                log(`Model built for ${currentResolution}×${currentResolution}: ${(paramCount / 1000).toFixed(1)}K params`, 'success');
+                updateModelViz(config, paramCount);
+                startTrainingBtn.disabled = trainingData === null;
+                generateSamplesBtn.disabled = false;
+                saveModelBtn.disabled = false;
+            } catch (err) {
+                log(`Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        });
+        
+        function updateModelViz(config, paramCount) {
+            const viz = document.getElementById('modelViz');
+            const res = config.resolution || currentResolution;
+            let html = `<div class="layer-block"><span class="layer-name">Input</span><span class="layer-params">${res}×${res}×3</span></div>`;
+            html += `<div class="arrow">↓</div>`;
+            
+            let size = res;
+            for (let i = 0; i < config.channelMult.length; i++) {
+                const ch = config.baseChannels * config.channelMult[i];
+                html += `<div class="layer-block"><span class="layer-name">Enc ${i+1} (GN+Res)</span><span class="layer-params">${size}×${size}×${ch}</span></div>`;
+                html += `<div class="arrow">↓</div>`;
+                if (i < config.channelMult.length - 1) size = Math.floor(size / 2);
+            }
+            
+            html += `<div class="layer-block" style="background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.3);"><span class="layer-name">Bottleneck</span><span class="layer-params">${size}×${size}</span></div>`;
+            
+            for (let i = config.channelMult.length - 1; i >= 0; i--) {
+                const ch = config.baseChannels * config.channelMult[i];
+                html += `<div class="arrow">↓</div>`;
+                html += `<div class="layer-block"><span class="layer-name">Dec ${config.channelMult.length - i} (GN+Res)</span><span class="layer-params">${size}×${size}×${ch}</span></div>`;
+                if (i > 0) size *= 2;
+            }
+            
+            html += `<div class="arrow">↓</div>`;
+            html += `<div class="layer-block"><span class="layer-name">Output</span><span class="layer-params">${res}×${res}×3</span></div>`;
+            html += `<div style="text-align: center; margin-top: 15px; color: #00d4ff; font-weight: 600;">${(paramCount / 1000).toFixed(1)}K params</div>`;
+            
+            viz.innerHTML = html;
+        }
+        
+        // ==================== TRAINING ====================
+        async function train() {
+            const learningRate = Math.pow(10, parseFloat(document.getElementById('learningRate').value));
+            const batchSize = parseInt(document.getElementById('batchSize').value);
+            const epochs = parseInt(document.getElementById('epochs').value);
+            
+            // Check if model resolution matches data resolution
+            if (model.resolution !== currentResolution) {
+                log(`Error: Model built for ${model.resolution}×${model.resolution} but data is ${currentResolution}×${currentResolution}. Rebuild model!`, 'error');
+                isTraining = false;
+                startTrainingBtn.disabled = false;
+                stopTrainingBtn.disabled = true;
+                return;
+            }
+            
+            const optimizer = tf.train.adam(learningRate);
+            const numSamples = trainingData.shape[0];
+            const stepsPerEpoch = Math.ceil(numSamples / batchSize);
+            
+            log(`Training ${currentResolution}×${currentResolution}: ${epochs} epochs, batch ${batchSize}, lr ${learningRate.toExponential(1)}`);
+            
+            for (let epoch = 0; epoch < epochs && isTraining; epoch++) {
+                let epochLoss = 0;
+                const indices = tf.util.createShuffledIndices(numSamples);
+                
+                for (let step = 0; step < stepsPerEpoch && isTraining; step++) {
+                    const startIdx = step * batchSize;
+                    const endIdx = Math.min(startIdx + batchSize, numSamples);
+                    const batchIndices = Array.from(indices).slice(startIdx, endIdx);
+                    const batch = tf.gather(trainingData, batchIndices);
+                    
+                    const { value: loss, grads } = tf.variableGrads(() => {
+                        const bSize = batch.shape[0];
+                        const t = tf.randomUniform([bSize], 0, 1);
+                        const noise = tf.randomNormal(batch.shape);
+                        
+                        // Flow matching: x_t = t*data + (1-t)*noise
+                        const tView = tf.reshape(t, [-1, 1, 1, 1]);
+                        const x_t = tf.add(tf.mul(tView, batch), tf.mul(tf.sub(1, tView), noise));
+                        
+                        // Velocity target: data - noise
+                        const target = tf.sub(batch, noise);
+                        const pred = model.forward(x_t, t, true);
+                        
+                        return tf.mean(tf.square(tf.sub(pred, target)));
+                    });
+                    
+                    optimizer.applyGradients(grads);
+                    const lossVal = loss.dataSync()[0];
+                    epochLoss += lossVal;
+                    totalSamplesProcessed += endIdx - startIdx;
+                    
+                    batch.dispose();
+                    loss.dispose();
+                    Object.values(grads).forEach(g => g.dispose());
+                    
+                    document.getElementById('currentLoss').textContent = lossVal.toFixed(4);
+                    document.getElementById('samplesProcessed').textContent = totalSamplesProcessed;
+                    await tf.nextFrame();
+                }
+                
+                const avgLoss = epochLoss / stepsPerEpoch;
+                lossHistory.push(avgLoss);
+                document.getElementById('currentEpoch').textContent = epoch + 1;
+                document.getElementById('progressFill').style.width = `${((epoch + 1) / epochs) * 100}%`;
+                drawLossChart();
+                
+                if ((epoch + 1) % 5 === 0) {
+                    log(`Epoch ${epoch + 1}/${epochs}, Loss: ${avgLoss.toFixed(4)}`);
+                    await generateSamples();
+                }
+                await tf.nextFrame();
+            }
+            
+            log(isTraining ? 'Training complete!' : 'Training stopped', isTraining ? 'success' : 'info');
+            isTraining = false;
+            startTrainingBtn.disabled = false;
+            stopTrainingBtn.disabled = true;
+        }
+        
+        startTrainingBtn.addEventListener('click', () => {
+            if (!model || !trainingData) {
+                log('Build model and upload images first', 'error');
+                return;
+            }
+            isTraining = true;
+            startTrainingBtn.disabled = true;
+            stopTrainingBtn.disabled = false;
+            train();
+        });
+        
+        stopTrainingBtn.addEventListener('click', () => {
+            isTraining = false;
+            log('Stopping...');
+        });
+        
+        // ==================== SAMPLING ====================
+        async function generateSamples() {
+            if (!model) return;
+            const steps = parseInt(document.getElementById('samplingSteps').value);
+            const res = model.resolution;
+            
+            const samples = await tf.tidy(() => {
+                let x = tf.randomNormal([4, res, res, 3]);
+                const dt = 1.0 / steps;
+                
+                for (let i = 0; i < steps; i++) {
+                    const t = tf.fill([4], i / steps);
+                    const v = model.forward(x, t, false);
+                    x = tf.add(x, tf.mul(v, dt));
+                }
+                
+                return tf.div(tf.add(tf.clipByValue(x, -1, 1), 1), 2);
+            });
+            
+            const data = await samples.array();
+            samples.dispose();
+            
+            for (let i = 0; i < 4; i++) {
+                const canvas = document.getElementById(`gen${i}`);
+                canvas.width = res;
+                canvas.height = res;
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.createImageData(res, res);
+                for (let y = 0; y < res; y++) {
+                    for (let px = 0; px < res; px++) {
+                        const idx = (y * res + px) * 4;
+                        imageData.data[idx] = Math.floor(data[i][y][px][0] * 255);
+                        imageData.data[idx + 1] = Math.floor(data[i][y][px][1] * 255);
+                        imageData.data[idx + 2] = Math.floor(data[i][y][px][2] * 255);
+                        imageData.data[idx + 3] = 255;
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+            }
+        }
+        
+        generateSamplesBtn.addEventListener('click', async () => {
+            log(`Generating ${model.resolution}×${model.resolution} samples...`);
+            await generateSamples();
+            log('Done', 'success');
+        });
+        
+        // ==================== LOSS CHART ====================
+        function drawLossChart() {
+            const width = lossChart.width = lossChart.offsetWidth * 2;
+            const height = lossChart.height = lossChart.offsetHeight * 2;
+            lossCtx.scale(2, 2);
+            const w = width / 2, h = height / 2;
+            const pad = 40;
+            
+            lossCtx.fillStyle = 'rgba(0,0,0,0.2)';
+            lossCtx.fillRect(0, 0, w, h);
+            
+            if (lossHistory.length < 2) {
+                lossCtx.fillStyle = '#666';
+                lossCtx.font = '12px sans-serif';
+                lossCtx.textAlign = 'center';
+                lossCtx.fillText('Loss chart', w/2, h/2);
+                return;
+            }
+            
+            const max = Math.max(...lossHistory);
+            const min = Math.min(...lossHistory);
+            const range = max - min || 1;
+            
+            lossCtx.strokeStyle = '#00d4ff';
+            lossCtx.lineWidth = 2;
+            lossCtx.beginPath();
+            for (let i = 0; i < lossHistory.length; i++) {
+                const x = pad + (i / (lossHistory.length - 1)) * (w - 2*pad);
+                const y = pad + (1 - (lossHistory[i] - min) / range) * (h - 2*pad);
+                i === 0 ? lossCtx.moveTo(x, y) : lossCtx.lineTo(x, y);
+            }
+            lossCtx.stroke();
+            lossCtx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+        
+        // ==================== UI UPDATES ====================
+        document.getElementById('learningRate').addEventListener('input', (e) => {
+            document.getElementById('lrDisplay').textContent = Math.pow(10, parseFloat(e.target.value)).toExponential(1);
+        });
+        document.getElementById('dropout').addEventListener('input', (e) => {
+            document.getElementById('dropoutDisplay').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+        document.getElementById('samplingSteps').addEventListener('input', (e) => {
+            document.getElementById('stepsDisplay').textContent = `${e.target.value} steps`;
+        });
+        
+        // ==================== SAVE/LOAD ====================
+        saveModelBtn.addEventListener('click', async () => {
+            if (!model) return;
+            const weights = {};
+            const tw = model.getTrainableWeights();
+            for (let i = 0; i < tw.length; i++) {
+                weights[`w${i}`] = Array.from(await tw[i].data());
+                weights[`s${i}`] = tw[i].shape;
+            }
+            const blob = new Blob([JSON.stringify({ config: model.config, weights })], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `diffusion-model-${model.resolution}x${model.resolution}.json`;
+            a.click();
+            log('Model saved', 'success');
+        });
+        
+        loadModelBtn.addEventListener('click', () => modelFileInput.click());
+        modelFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            try {
+                const data = JSON.parse(await file.text());
+                const loadedRes = data.config.resolution || 32;
+                
+                // Update resolution to match loaded model
+                currentResolution = loadedRes;
+                imageResolutionSelect.value = loadedRes;
+                resolutionHint.textContent = `Images will be resized to ${currentResolution}×${currentResolution}`;
+                genResolutionBadge.textContent = `${currentResolution}×${currentResolution}`;
+                updateGeneratedCanvases();
+                
+                // Clear images if they don't match
+                if (uploadedImages.length > 0) {
+                    log(`Clearing images (model expects ${loadedRes}×${loadedRes})`, 'warning');
+                    clearAllImages();
+                }
+                
+                model = buildModel(data.config);
+                model.init();
+                const tw = model.getTrainableWeights();
+                for (let i = 0; i < tw.length; i++) {
+                    tw[i].assign(tf.tensor(data.weights[`w${i}`], data.weights[`s${i}`]));
+                }
+                document.getElementById('baseChannels').value = data.config.baseChannels;
+                document.getElementById('channelMult').value = data.config.channelMult.join(',');
+                document.getElementById('normGroups').value = data.config.normGroups;
+                document.getElementById('dropout').value = data.config.dropout;
+                updateModelViz(data.config, model.getParamCount());
+                startTrainingBtn.disabled = trainingData === null;
+                generateSamplesBtn.disabled = false;
+                saveModelBtn.disabled = false;
+                log(`Model loaded (${loadedRes}×${loadedRes})`, 'success');
+            } catch (err) {
+                log(`Error loading model: ${err.message}`, 'error');
+            }
+        });
+        
+        drawLossChart();
+        log('Ready. Select resolution, upload images, and build model to start!');
+    </script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Embedding Explorer (MobileCLIP)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.item-card{background:#374151;border-radius:8px;padding:8px;cursor:grab;transition:.2s;user-select:none;display:inline-flex;flex-direction:column;align-items:center;gap:4px;position:relative;max-width:140px}
+.item-card:hover{background:#4B5563;transform:scale(1.02)}
+.item-card img{width:80px;height:80px;object-fit:cover;border-radius:6px;pointer-events:none}
+.item-card .remove-btn{position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;opacity:0;transition:.2s;z-index:10}
+.item-card:hover .remove-btn{opacity:1}
+.item-card span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;font-size:.75rem;padding:.25rem;width:100%;text-align:center;max-height:60px;word-break:break-word}
+.drop-zone{min-height:110px;border:2px dashed #4B5563;border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;gap:8px;transition:.2s}
+.drop-zone.drag-over{background:rgba(255,255,255,.05);border-color:#3B82F6}
+#items-pool{max-height:250px;overflow-y:auto}
+.spinner{width:40px;height:40px;border:4px solid #374151;border-top-color:#3B82F6;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
+.custom-scroll::-webkit-scrollbar{width:4px}
+.custom-scroll::-webkit-scrollbar-track{background:transparent}
+.custom-scroll::-webkit-scrollbar-thumb{background:#4B5563;border-radius:10px}
+.score-cell{cursor:help;position:relative}
+.score-cell:hover .score-tooltip{display:block}
+.score-tooltip{display:none;position:absolute;bottom:100%;right:0;background:#1F2937;border:1px solid #4B5563;padding:8px;border-radius:8px;font-size:11px;white-space:pre;z-index:20;min-width:120px}
+.grp-collapsed{padding:6px 12px!important}
+.grp-name:hover{background:#4B5563}
+#preview-modal{display:none}
+#preview-modal.show{display:flex}
+.agg-btn{font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid #4B5563;background:#1F2937;color:#9CA3AF;cursor:pointer;transition:.15s;white-space:nowrap}
+.agg-btn:hover{background:#374151;color:#D1D5DB}
+.agg-btn.active{background:#7C3AED;border-color:#7C3AED;color:#fff;font-weight:700}
+.tab-btn{padding:8px 24px;font-weight:700;border-radius:8px 8px 0 0;cursor:pointer;transition:.15s;border:1px solid transparent;border-bottom:none}
+.tab-btn.active{background:#1F2937;color:#fff;border-color:#4B5563}
+.tab-btn:not(.active){background:#374151;color:#9CA3AF}
+.tab-btn:not(.active):hover{color:#D1D5DB}
+.reg-concept{border:1px solid #4B5563;border-radius:8px;background:#1F2937;margin-bottom:6px}
+.reg-item{display:inline-flex;flex-direction:column;align-items:center;background:#374151;border-radius:6px;padding:4px;position:relative;max-width:90px}
+.reg-item img{width:70px;height:70px;object-fit:cover;border-radius:4px;pointer-events:none}
+.reg-item .reg-rm{position:absolute;top:-4px;right:-4px;width:16px;height:16px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:.2s}
+.reg-item:hover .reg-rm{opacity:1}
+.reg-drop{min-height:80px;border:2px dashed #4B5563;border-radius:8px;padding:8px;display:flex;flex-wrap:wrap;gap:8px;transition:.2s}
+.reg-drop.drag-over{background:rgba(255,255,255,.05);border-color:#3B82F6}
+.reg-item[draggable=true]{cursor:grab}
+.reg-item.drag-over-left::before{content:'';position:absolute;left:-6px;top:4px;bottom:4px;width:3px;background:#3B82F6;border-radius:2px;z-index:10}
+.reg-item.drag-over-right::after{content:'';position:absolute;right:-6px;top:4px;bottom:4px;width:3px;background:#3B82F6;border-radius:2px;z-index:10}
+.embed-progress{font-size:10px;color:#60A5FA;padding:2px 8px;background:#1E3A5F;border-radius:4px;display:none;align-items:center;gap:4px}
+.embed-progress.active{display:inline-flex}
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4">
+<div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
+  <div class="spinner"></div>
+  <p id="loading-text" class="mt-4 text-lg font-bold">Initializing MobileClip Model...</p>
+  <p class="text-gray-400 text-sm mb-4">First load downloads ~350MB (cached after)</p>
+  <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
+</div>
+
+<div id="preview-modal" class="fixed inset-0 bg-black/90 z-50 items-center justify-center p-4 flex-col" onclick="this.classList.remove('show')">
+  <div id="preview-filename" class="text-white text-sm font-medium mb-3 bg-gray-800/80 px-4 py-2 rounded-lg backdrop-blur-sm max-w-lg truncate"></div>
+  <img id="preview-img" class="max-w-full max-h-[calc(100%-60px)] object-contain rounded-lg">
+</div>
+
+<div class="max-w-5xl mx-auto">
+  <div class="flex justify-between items-center mb-2">
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Multi-Modal Embedding Explorer</h1>
+    <div class="flex items-center gap-2">
+      <span id="embed-status" class="embed-progress"><span class="spinner" style="width:12px;height:12px;border-width:2px"></span> <span id="embed-status-text">Embedding...</span></span>
+      <button onclick="clearAllData()" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-200 px-3 py-2 rounded-lg border border-red-700 transition">🗑️ Clear Workspace</button>
+    </div>
+  </div>
+
+  <div class="flex gap-1 mb-0">
+    <div class="tab-btn active" data-tab="classify" onclick="switchTab('classify')">Classify</div>
+    <div class="tab-btn" data-tab="regression" onclick="switchTab('regression')">Regression</div>
+  </div>
+
+  <div id="tab-classify">
+  <div id="section-siglip" class="space-y-6 pt-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+        <input type="file" id="image-input" accept="image/*,video/*" multiple class="hidden">
+        <button onclick="document.getElementById('image-input').click()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-medium">📁 Upload Files</button>
+      </div>
+      <div class="bg-gray-800 p-4 rounded-xl flex gap-2 border border-gray-700">
+        <input type="text" id="text-input" placeholder="Enter text prompt..." class="flex-1 bg-gray-700 p-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="add-text-btn" class="bg-blue-600 hover:bg-blue-700 px-6 rounded-lg font-medium">Add</button>
+      </div>
+    </div>
+    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+      <div class="flex justify-between mb-2 text-sm font-bold text-gray-400">
+        <div class="flex items-center gap-3">ITEM POOL <button onclick="clearPoolOnly()" class="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-200 px-2 py-1 rounded border border-red-700 transition">🗑️ Clear Pool</button></div>
+        <span id="item-count">0 items</span>
+      </div>
+      <div id="items-pool" class="drop-zone" data-zone="pool"><p class="pool-placeholder text-gray-500 text-sm w-full text-center py-8">Drag items to groups below</p></div>
+    </div>
+    
+    <div id="concept-groups" class="space-y-2"></div>
+
+    <div class="text-center pb-10 space-y-4">
+      <div class="flex items-center justify-center flex-wrap gap-6 bg-gray-800 p-4 rounded-xl border border-gray-700 w-fit mx-auto">
+        <div class="flex items-center gap-2">
+            <label class="text-xs font-bold text-gray-400 uppercase">Include Groups in Results</label>
+            <input type="checkbox" id="filter-all" checked class="accent-purple-500 w-4 h-4">
+        </div>
+        <div class="flex items-center gap-1.5">
+            <label class="text-xs font-bold text-gray-400 uppercase mr-1">Aggregation</label>
+            <button class="agg-btn active" data-agg="linear" onclick="setAgg('linear')">mean(s)</button>
+            <button class="agg-btn" data-agg="sqrt" onclick="setAgg('sqrt')">mean(√s)</button>
+            <button class="agg-btn" data-agg="square" onclick="setAgg('square')">max(score)</button>
+        </div>
+      </div>
+      <button id="calculate-btn" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🔍 Rank by Similarity</button>
+    </div>
+  </div>
+
+  <div id="results-section" class="bg-gray-800 p-6 rounded-xl hidden mb-20 border border-gray-700">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-bold">Ranked Results</h2>
+        <div class="flex items-center gap-3">
+            <button onclick="copyResults('lastResults')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-bold transition flex items-center gap-2">📋 Copy Results</button>
+            <div id="result-meta" class="text-sm text-gray-400"></div>
+        </div>
+    </div>
+    <div id="results-content" class="space-y-3"></div>
+  </div>
+  </div>
+
+  <div id="tab-regression" class="hidden pt-4 space-y-6">
+    <div class="flex gap-4" style="min-height:350px">
+      <div class="w-[70%] flex flex-col bg-gray-800 rounded-xl border border-gray-700">
+        <div class="flex justify-between items-center p-3 border-b border-gray-700">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-bold text-gray-400">ITEM POOL</span>
+            <input type="file" id="reg-image-input" accept="image/*" multiple class="hidden">
+            <button onclick="document.getElementById('reg-image-input').click()" class="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded font-medium">📁 Upload</button>
+            <button onclick="regClearPool()" class="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-200 px-2 py-1 rounded border border-red-700">🗑️</button>
+          </div>
+          <span id="reg-item-count" class="text-xs text-gray-400">0 items</span>
+        </div>
+        <div id="reg-pool" class="flex-1 overflow-y-auto custom-scroll p-3 flex flex-wrap gap-2 content-start max-h-[350px]" data-zone="reg-pool"></div>
+      </div>
+      
+      <div class="w-[30%] flex flex-col gap-2">
+        <button onclick="regAddConcept()" class="text-xs bg-gray-700 hover:bg-gray-600 p-2 rounded-lg border border-dashed border-gray-600">+ Add Concept</button>
+        <div id="reg-concepts" class="flex-1 overflow-y-auto custom-scroll space-y-2 pr-1 max-h-[350px]"></div>
+      </div>
+    </div>
+    
+    <div class="text-center pb-10 space-y-4">
+      <div class="flex items-center justify-center flex-wrap gap-6 bg-gray-800 p-4 rounded-xl border border-gray-700 w-fit mx-auto">
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-bold text-gray-400 uppercase">Include Concepts in Results</label>
+          <input type="checkbox" id="reg-filter-all" checked class="accent-purple-500 w-4 h-4">
+        </div>
+        <div class="flex items-center gap-1.5">
+          <label class="text-xs font-bold text-gray-400 uppercase mr-1">Aggregation</label>
+          <button class="agg-btn active" data-reg-agg="linear" onclick="setRegAgg('linear')">mean(s)</button>
+          <button class="agg-btn" data-reg-agg="sqrt" onclick="setRegAgg('sqrt')">mean(√s)</button>
+          <button class="agg-btn" data-reg-agg="square" onclick="setRegAgg('square')">max(score)</button>
+        </div>
+      </div>
+      <button onclick="regCalculate()" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🔍 Rank by Similarity</button>
+    </div>
+    
+    <div id="reg-results-section" class="bg-gray-800 p-6 rounded-xl hidden mb-20 border border-gray-700">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-bold">Ranked Results</h2>
+        <div class="flex items-center gap-3">
+          <button onclick="copyResults('regLastResults')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-bold transition flex items-center gap-2">📋 Copy Results</button>
+          <div id="reg-result-meta" class="text-sm text-gray-400"></div>
+        </div>
+      </div>
+      <div id="reg-results-content" class="space-y-3"></div>
+    </div>
+  </div>
+  
+  <!-- Attribution & Privacy Footer -->
+  <footer class="mt-12 mb-8 text-center text-gray-500 text-xs space-y-1">
+    <p>Powered by MobileCLIP via Transformers.js</p>
+    <p class="flex items-center justify-center gap-1">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      Files are processed locally in your browser. No data is sent to a server.
+    </p>
+  </footer>
+</div>
+
+<script type="module">
+import{AutoProcessor,AutoTokenizer,CLIPTextModelWithProjection,CLIPVisionModelWithProjection,RawImage,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
+env.allowRemoteModels=true;env.allowLocalModels=false;
+
+const $=id=>document.getElementById(id);
+window.$=$;
+const state={items:new Map(),nextId:0,models:{},lastResults:[],groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false,outlierPenalty:false}],gid:1,origFiles:new Map(),regOrigFiles:new Map(),aggMode:'linear',
+regItems:new Map(),regNextId:0,regConcepts:[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}],regCid:1,regAggMode:'linear',regLastResults:[]};
+window.appState=state;
+
+// --- Batch inference queue ---
+const BATCH_SIZE=4;
+let pendingItems=[];    // {item, store:'items'|'regItems'}
+let batchRunning=false;
+
+const yieldToMain=()=>new Promise(r=>setTimeout(r,0));
+
+function updateEmbedStatus(){
+  const n=pendingItems.length;
+  const el=$('embed-status');
+  if(n>0){el.classList.add('active');$('embed-status-text').textContent=`Embedding ${n} remaining...`}
+  else el.classList.remove('active');
+}
+
+async function processBatchQueue(){
+  if(batchRunning)return;
+  batchRunning=true;
+  while(pendingItems.length>0){
+    updateEmbedStatus();
+    // Split into image and text batches
+    const batch=pendingItems.splice(0,BATCH_SIZE);
+    const imgBatch=batch.filter(b=>b.item.type==='image'&&(b.store==='items'?state.items:state.regItems).has(b.item.id));
+    const txtBatch=batch.filter(b=>b.item.type==='text'&&state.items.has(b.item.id));
+
+    // Process images in parallel
+    if(imgBatch.length>0){
+      try{
+        const images=await Promise.all(imgBatch.map(b=>RawImage.read(b.item.content)));
+        // Process one at a time through the model (model may not support true batching well)
+        // but we parallelize the image loading above
+        for(let i=0;i<imgBatch.length;i++){
+          const b=imgBatch[i],store=b.store==='items'?state.items:state.regItems;
+          if(!store.has(b.item.id))continue;
+          try{
+            const inputs=await state.models.processor(images[i]);
+            const output=await state.models.vision(inputs);
+            b.item.embedding=norm(Array.from(output.image_embeds.data));
+            const card=document.querySelector(b.store==='items'?`.item-card[data-id="${b.item.id}"]`:`.reg-item[data-rid="${b.item.id}"]`);
+            card?.classList.remove('opacity-50');
+          }catch(e){console.error('img embed err',e)}
+        }
+      }catch(e){console.error('batch img err',e)}
+    }
+
+    // Process text
+    for(const b of txtBatch){
+      if(!state.items.has(b.item.id))continue;
+      try{
+        const inputs=state.models.tokenizer(b.item.content,{padding:'max_length',truncation:true});
+        const output=await state.models.text(inputs);
+        b.item.embedding=norm(Array.from(output.text_embeds.data));
+        document.querySelector(`.item-card[data-id="${b.item.id}"]`)?.classList.remove('opacity-50');
+      }catch(e){console.error('txt embed err',e)}
+    }
+
+    debouncedSave();
+    await yieldToMain(); // Let UI breathe between batches
+  }
+  updateEmbedStatus();
+  batchRunning=false;
+}
+
+function enqueueEmbed(item,store='items'){
+  pendingItems.push({item,store});
+  updateEmbedStatus();
+  processBatchQueue();
+}
+
+let regDragItemId=null;
+
+window.switchTab=tab=>{
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  $('tab-classify').classList.toggle('hidden',tab!=='classify');
+  $('tab-regression').classList.toggle('hidden',tab!=='regression');
+};
+
+window.setAgg=mode=>{state.aggMode=mode;document.querySelectorAll('.agg-btn:not([data-reg-agg])').forEach(b=>b.classList.toggle('active',b.dataset.agg===mode))};
+window.setRegAgg=mode=>{state.regAggMode=mode;document.querySelectorAll('[data-reg-agg]').forEach(b=>b.classList.toggle('active',b.dataset.regAgg===mode))};
+
+window.showPreview=(id,isReg=false)=>{
+  const item=isReg?state.regItems.get(id):state.items.get(id);
+  if(!item||item.type!=='image')return;
+  $('preview-filename').textContent=item.filename||'';$('preview-filename').style.display=item.filename?'block':'none';
+  const orig=isReg?state.regOrigFiles.get(id):state.origFiles.get(id);
+  if(orig){const r=new FileReader();r.onload=()=>{$('preview-img').src=r.result;$('preview-modal').classList.add('show')};r.readAsDataURL(orig)}
+  else{$('preview-img').src=item.content;$('preview-modal').classList.add('show')}
+};
+
+window.copyResults=key=>{
+  const data=state[key];if(!data?.length)return;
+  const txt=data.map((item,i)=>`Rank: ${i+1}\nScore: ${item.score.toFixed(4)}\n[${item.type.toUpperCase()}] ${item.type==='text'?item.content:item.filename||'Image'}`).join('\n\n\n');
+  navigator.clipboard.writeText(txt).then(()=>{const btn=event.target;const o=btn.innerHTML;btn.innerHTML='✅ Copied!';setTimeout(()=>btn.innerHTML=o,2000)});
+};
+
+const updateProgress=(p,t)=>{$('progress-bar').style.width=p+'%';if(t)$('loading-text').textContent=t};
+
+const DB_NAME='SigLIPExplorerDB',DB_VERSION=7;
+const dbPromise=new Promise((res,rej)=>{
+  const r=indexedDB.open(DB_NAME,DB_VERSION);
+  r.onerror=e=>rej(e.target.error);
+  r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('appState'))db.createObjectStore('appState',{keyPath:'id'});if(!db.objectStoreNames.contains('regState'))db.createObjectStore('regState',{keyPath:'id'})};
+  r.onsuccess=e=>res(e.target.result);
+});
+
+// Debounced save to reduce IDB writes
+let saveTimer=null;
+function debouncedSave(){if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveToDB()},500)}
+
+async function saveToDB(){
+  const db=await dbPromise,tx=db.transaction(['appState','regState'],'readwrite'),s=tx.objectStore('appState');
+  s.put({id:'items',items:[...state.items.values()]});s.put({id:'groups',groups:state.groups,gid:state.gid});
+  const rs=tx.objectStore('regState');
+  rs.put({id:'regItems',items:[...state.regItems.values()]});rs.put({id:'regConcepts',concepts:state.regConcepts,cid:state.regCid});
+}
+
+async function loadFromDB(){
+  const db=await dbPromise;
+  return new Promise(res=>{
+    const tx=db.transaction(['appState','regState'],'readonly'),s=tx.objectStore('appState');
+    const rg=s.get('groups');
+    rg.onsuccess=()=>{
+      if(rg.result){state.groups=rg.result.groups.map(g=>({...g,swapped:g.swapped||false,outlierPenalty:!!g.outlierPenalty}));state.gid=rg.result.gid}
+      renderGroups();
+      const r=s.get('items');
+      r.onsuccess=()=>{
+        if(r.result){r.result.items.forEach(i=>{state.items.set(i.id,i);createCardElement(i)});state.nextId=Math.max(0,...[...state.items.keys()])+1}
+        const rs2=tx.objectStore('regState'),rc=rs2.get('regConcepts');
+        rc.onsuccess=()=>{
+          if(rc.result){state.regConcepts=rc.result.concepts.map(c=>({...c,on:c.on!==undefined?c.on:true,reversed:!!c.reversed}));state.regCid=rc.result.cid}
+          const ri=rs2.get('regItems');
+          ri.onsuccess=()=>{if(ri.result){ri.result.items.forEach(i=>state.regItems.set(i.id,i));state.regNextId=Math.max(0,...[...state.regItems.keys()],0)+1}regRender();res()};
+          ri.onerror=()=>{regRender();res()};
+        };
+        rc.onerror=()=>{regRender();res()};
+      };
+    };
+  });
+}
+
+window.clearAllData=async()=>{
+  if(!confirm('Clear all data?'))return;
+  pendingItems=[];updateEmbedStatus();
+  state.items.clear();state.nextId=0;state.lastResults=[];state.origFiles.clear();state.regOrigFiles.clear();
+  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false,outlierPenalty:false}];state.gid=1;
+  state.regItems.clear();state.regNextId=0;state.regConcepts=[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}];state.regCid=1;state.regLastResults=[];
+  document.querySelectorAll('.item-card').forEach(c=>c.remove());
+  $('results-section').classList.add('hidden');$('reg-results-section').classList.add('hidden');
+  renderGroups();updateCounts();regRender();await saveToDB();
+};
+
+window.clearPoolOnly=async()=>{
+  if(!confirm('Clear only pool items?'))return;
+  [...state.items.values()].filter(i=>i.zone==='pool').forEach(i=>{state.items.delete(i.id);state.origFiles.delete(i.id);document.querySelector(`.item-card[data-id="${i.id}"]`)?.remove()});
+  pendingItems=pendingItems.filter(p=>p.store!=='items'||state.items.has(p.item.id));updateEmbedStatus();
+  updateCounts();await saveToDB();
+};
+
+function makeCard(item){
+  const c=document.createElement('div');c.className='item-card'+(item.embedding?'':' opacity-50');c.draggable=true;c.dataset.id=item.id;
+  c.innerHTML=item.type==='image'?`<img src="${item.content}" onclick="showPreview(${item.id},false)"><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`:`<span>${item.content}</span><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`;
+  c.ondragstart=e=>e.dataTransfer.setData('id',item.id);return c;
+}
+
+function renderGroups(){
+  const frag=document.createDocumentFragment();
+  state.groups.forEach(g=>{
+    const div=document.createElement('div');div.className=`bg-gray-800 rounded-xl border border-gray-700${g.on?'':' opacity-50'}`;
+    const swapInd=g.swapped?'<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>':'';
+    div.innerHTML=`<div class="flex items-center gap-2 p-3 ${g.open?'':'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on?' checked':''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded" ondblclick="event.stopPropagation();renameGrp(${g.id},this)">${g.name}${swapInd}</span><button onclick="togOutlier(${g.id});event.stopPropagation()" class="text-[10px] ${g.outlierPenalty?'bg-orange-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-1" title="Outlier penalty">🎯</button><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-2" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open?'▼':'▶'}</span>${state.groups.length>1?`<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>`:''}</div><div class="${g.open?'grid':'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped?'border-red-500':'border-green-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-red-400':'text-green-400'} font-bold">${g.swapped?'➖ Negative':'➕ Positive'}</span><input type="file" id="pf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('pf${g.id}').click()" class="${g.swapped?'bg-red-600':'bg-green-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped?'border-green-500':'border-red-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-green-400':'text-red-400'} font-bold">${g.swapped?'➕ Positive':'➖ Negative'}</span><input type="file" id="nf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('nf${g.id}').click()" class="${g.swapped?'bg-green-600':'bg-red-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
+    frag.appendChild(div);
+  });
+  if(state.groups.length<10){const btn=document.createElement('button');btn.className='w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';btn.textContent=`+ Add Concept Group (${state.groups.length}/10)`;btn.onclick=addGrp;frag.appendChild(btn)}
+  $('concept-groups').innerHTML='';$('concept-groups').appendChild(frag);
+  [...state.items.values()].filter(i=>i.zone!=='pool').forEach(item=>{const z=document.querySelector(`[data-zone="${item.zone}"]`);if(z)z.appendChild(makeCard(item));else{item.zone='pool';$('items-pool').appendChild(makeCard(item))}});
+  document.querySelectorAll('.drop-zone').forEach(z=>{z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};z.ondragleave=z.ondrop=e=>{z.classList.remove('drag-over');if(e.type==='drop'){e.preventDefault();const id=+e.dataTransfer.getData('id');if(!isNaN(id)&&state.items.has(id)){state.items.get(id).zone=z.dataset.zone;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c)z.appendChild(c);debouncedSave()}}}});
+  state.groups.forEach(g=>{const p=$(`pf${g.id}`),n=$(`nf${g.id}`);if(p)p.onchange=e=>upload(e.target.files,`pos-${g.id}`);if(n)n.onchange=e=>upload(e.target.files,`neg-${g.id}`)});
+}
+
+window.renameGrp=(id,el)=>{const g=state.groups.find(x=>x.id===id);if(!g)return;const input=document.createElement('input');input.type='text';input.value=g.name;input.className='bg-gray-700 px-1 rounded text-sm w-24';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){g.name=input.value.trim()||g.name;renderGroups();debouncedSave()}else if(e.key==='Escape')renderGroups()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
+window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false,outlierPenalty:false});renderGroups();debouncedSave()};
+window.delGrp=id=>{if(state.groups.length<2)return;[...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';const c=document.querySelector(`.item-card[data-id="${i.id}"]`);if(c)$('items-pool').appendChild(c)});state.groups=state.groups.filter(g=>g.id!==id);renderGroups();debouncedSave()};
+window.togGrp=(id,v)=>{state.groups.find(g=>g.id===id).on=v;renderGroups();debouncedSave()};
+window.togColl=id=>{state.groups.find(x=>x.id===id).open^=1;renderGroups()};
+window.swapGrp=id=>{state.groups.find(g=>g.id===id).swapped^=1;renderGroups();debouncedSave()};
+window.togOutlier=id=>{state.groups.find(x=>x.id===id).outlierPenalty^=1;renderGroups();debouncedSave()};
+
+async function compressImage(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),MAX=512;let w=img.width,h=img.height;if(w>h){if(w>MAX){h*=MAX/w;w=MAX}}else if(h>MAX){w*=MAX/h;h=MAX}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.8))};img.src=dataUrl})}
+
+function createCardElement(item){(item.zone==='pool'?$('items-pool'):document.querySelector(`[data-zone="${item.zone}"]`)||$('items-pool')).appendChild(makeCard(item))}
+function updateCounts(){$('item-count').textContent=state.items.size+' items';document.querySelectorAll('.pool-placeholder').forEach(p=>p.style.display=state.items.size?'none':'block')}
+
+async function init(){
+  const S='Xenova/mobileclip_s2',device=navigator.gpu?'webgpu':'wasm';
+  updateProgress(10,"Loading Processor...");state.models.processor=await AutoProcessor.from_pretrained(S);
+  updateProgress(20,"Loading Tokenizer...");state.models.tokenizer=await AutoTokenizer.from_pretrained(S);
+  updateProgress(40,"Loading Vision Model...");state.models.vision=await CLIPVisionModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(40+p.progress*.3)});
+  updateProgress(70,"Loading Text Model...");state.models.text=await CLIPTextModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(70+p.progress*.3)});
+  await loadFromDB();updateCounts();$('loading-overlay').remove();setupEvents();
+}
+
+const norm=v=>{const m=Math.hypot(...v);return v.map(x=>x/(m||1))};
+const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+
+function ridge(X, y, sampleWeights=null) {
+  const N = X.length; if(!N) return [];
+  const D = X[0].length;
+  const lambda = 0.1 + (2.0 / N);
+  const sw = sampleWeights || new Array(N).fill(1);
+  const XtWX = Array.from({length:D}, ()=>new Float64Array(D));
+  const XtWy = new Float64Array(D);
+  for(let i=0; i<N; i++) {
+    const xi=X[i], wi=sw[i], wyi=wi*y[i];
+    for(let j=0; j<D; j++) {
+      XtWy[j] += xi[j]*wyi;
+      const wxj = wi*xi[j];
+      for(let k=j; k<D; k++) { const v=wxj*xi[k]; XtWX[j][k]+=v; if(k!==j) XtWX[k][j]+=v; }
+    }
+  }
+  for(let j=0; j<D; j++) XtWX[j][j] += lambda;
+  const I = Array.from({length:D}, (_,i)=>{ const r=new Float64Array(D); r[i]=1; return r; });
+  for(let i=0; i<D; i++) {
+    let maxRow=i, maxEl=Math.abs(XtWX[i][i]);
+    for(let k=i+1; k<D; k++) if(Math.abs(XtWX[k][i])>maxEl) { maxEl=Math.abs(XtWX[k][i]); maxRow=k; }
+    [XtWX[i], XtWX[maxRow]] = [XtWX[maxRow], XtWX[i]];
+    [I[i], I[maxRow]] = [I[maxRow], I[i]];
+    const f = XtWX[i][i];
+    if(Math.abs(f) < 1e-12) continue;
+    for(let j=0; j<D; j++) { XtWX[i][j]/=f; I[i][j]/=f; }
+    for(let k=0; k<D; k++) {
+      if(k===i) continue;
+      const f2 = XtWX[k][i];
+      for(let j=0; j<D; j++) { XtWX[k][j]-=f2*XtWX[i][j]; I[k][j]-=f2*I[i][j]; }
+    }
+  }
+  const w = new Float64Array(D);
+  for(let i=0; i<D; i++) for(let j=0; j<D; j++) w[i] += I[i][j]*XtWy[j];
+  return Array.from(w);
+}
+
+function applyAgg(scores,mode){const vals=Object.values(scores),n=vals.length;if(!n)return 0;if(mode==='sqrt')return vals.reduce((s,v)=>s+(v>=0?Math.sqrt(v):-Math.sqrt(-v)),0)/n;if(mode==='square')return Math.max(...vals);return vals.reduce((a,b)=>a+b,0)/n}
+
+async function addItem(type,content,zone='pool',origFile=null,filename=null){
+  const item={id:state.nextId++,type,content,embedding:null,zone,filename};
+  if(type==='image')item.content=await compressImage(content);
+  if(origFile)state.origFiles.set(item.id,origFile);
+  state.items.set(item.id,item);createCardElement(item);updateCounts();
+  enqueueEmbed(item,'items');
+  return item;
+}
+
+window.addItem=addItem;
+window.removeItem=id=>{const item=state.items.get(id);if(!item)return;const card=document.querySelector(`.item-card[data-id="${id}"]`);if(item.zone!=='pool'){item.zone='pool';$('items-pool').appendChild(card)}else{state.items.delete(id);state.origFiles.delete(id);card.remove()}updateCounts();debouncedSave()};
+
+const upload = async (files, zone) => {
+  for (const f of files) {
+    if (f.type.startsWith('video/')) {
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(f);
+      v.muted = true;
+      await new Promise(r => { v.onloadedmetadata = r; v.onerror = r; });
+      if (isNaN(v.duration) || v.duration === 0) { alert('Invalid video duration'); URL.revokeObjectURL(v.src); continue; }
+      const num = prompt(`Extract frames?\nDuration: ${v.duration.toFixed(1)}s`, "200");
+      if (!num) { URL.revokeObjectURL(v.src); continue; }
+      const count = +num;
+      if (isNaN(count) || count <= 0 || !confirm(`Extract ${count} frames?`)) { URL.revokeObjectURL(v.src); continue; }
+      
+      const c = document.createElement('canvas');
+      const ctx = c.getContext('2d');
+      const MAX = 512; 
+      let w = v.videoWidth, h = v.videoHeight;
+      if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+      c.width = w; c.height = h;
+
+      for (let i = 0; i < count; i++) {
+        v.currentTime = i * (v.duration / count);
+        await new Promise(r => { v.onseeked = r; v.onerror = r; });
+        ctx.drawImage(v, 0, 0, w, h);
+        await addItem('image', c.toDataURL('image/jpeg', 0.8), zone, null, `${f.name} [frame ${i + 1}/${count}]`);
+      }
+      URL.revokeObjectURL(v.src);
+    } else {
+      if (f.size > 300 * 1024 * 1024) { alert('Image file too large (max 300MB)'); continue; }
+      const r = new FileReader();
+      r.onload = () => addItem('image', r.result, zone, f, f.name);
+      r.readAsDataURL(f);
+    }
+  }
+};
+
+window.calculateRankings=()=>{
+  const showAll=$('filter-all').checked,cands=[...state.items.values()].filter(i=>i.embedding&&(showAll||i.zone==='pool'));
+  if(!cands.length)throw new Error('No items to rank!');
+  const validGrps=state.groups.filter(g=>g.on&&[...state.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
+  if(!validGrps.length)throw new Error('Add items to at least one enabled group');
+
+  const groupWeights = {};
+  const groupMeanPos = {};
+
+  validGrps.forEach(g => {
+    let pos=[...state.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
+    let neg=[...state.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+    if(g.swapped)[pos,neg]=[neg,pos];
+    
+    if (g.outlierPenalty && pos.length > 0) {
+      const meanVec = new Float64Array(512);
+      pos.forEach(p => { for(let k=0; k<512; k++) meanVec[k] += p.embedding[k]; });
+      groupMeanPos[g.id] = norm(Array.from(meanVec));
+    }
+
+    const nP=pos.length, nN=neg.length, X=[], y=[], sw=[];
+    const wP = nP>0 ? 1/(2*nP) : 0, wN = nN>0 ? 1/(2*nN) : 0;
+    pos.forEach(p=>{X.push(p.embedding); y.push(1); sw.push(wP)});
+    neg.forEach(n=>{X.push(n.embedding); y.push(-1); sw.push(wN)});
+    if(!nP||!nN){ for(let i=0;i<sw.length;i++) sw[i]=1; }
+    groupWeights[g.id] = X.length ? ridge(X, y, sw) : new Array(512).fill(0);
+  });
+
+  const results=cands.map(item=>{
+    const scores={},rawScores={};
+    validGrps.forEach(g=>{
+      let sc = dot(item.embedding, groupWeights[g.id]);
+      if (g.outlierPenalty && groupMeanPos[g.id]) {
+        sc = (sc + dot(item.embedding, groupMeanPos[g.id])) / 2;
+      }
+      scores[g.id] = sc; 
+      rawScores[g.id] = g.swapped ? -sc : sc;
+    });
+    return{...item,score:applyAgg(scores,state.aggMode),gScores:scores,rawScores};
+  });
+  const aggLabels={linear:'mean(s)',sqrt:'mean(√s)',square:'max(score)'};
+  return{results:results.sort((a,b)=>b.score-a.score),meta:(validGrps.length>1?`Avg of ${validGrps.length} groups`:validGrps[0].name)+` · ${aggLabels[state.aggMode]}`};
+};
+
+function setupEvents(){
+  $('add-text-btn').onclick=()=>{const v=$('text-input').value.trim();if(v){addItem('text',v);$('text-input').value=''}};
+  $('text-input').onkeydown=e=>{if(e.key==='Enter')$('add-text-btn').click()};
+  $('image-input').onchange=e=>upload(e.target.files,'pool');
+  $('reg-image-input').onchange=e=>regUpload(e.target.files);
+  $('calculate-btn').onclick=()=>{try{const{results,meta}=window.calculateRankings();render(results,meta)}catch(e){alert(e.message)}};
+}
+
+function render(data,meta,cfg={}){
+  const{sec='results-section',con='results-content',met='result-meta',stKey='lastResults',ttFn,isReg=false}=cfg;
+  const tooltipFn=ttFn||(item=>item.rawScores?Object.entries(item.rawScores).map(([id,s])=>{const g=state.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'');
+  state[stKey]=data;$(sec).classList.remove('hidden');$(met).textContent=meta;
+  const max=Math.max(...data.map(d=>d.score)),min=Math.min(...data.map(d=>d.score)),range=max-min||1;
+  $(con).innerHTML=data.map((item,i)=>{
+    const n=(item.score-min)/range,tt=tooltipFn(item);
+    const lbl=item.type==='text'?item.content:(item.filename||'Image'),esc=lbl.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return`<div class="flex items-center gap-4 bg-gray-700/50 p-3 rounded-xl border border-gray-600"><div class="text-xl font-black text-gray-500 w-8">${i+1}</div>${item.type==='image'?`<img src="${item.content}" class="w-16 h-16 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500" onclick="showPreview(${item.id},${isReg})" title="${esc}">`:`<div class="w-16 h-16 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>`}<div class="flex-1 min-w-0">${item.type==='text'?`<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1"><span class="truncate flex-1">${item.content}</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>`:`<div class="text-sm font-medium truncate mb-1" title="${esc}">${esc}</div>`}<div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.3?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div></div></div>`}).join('');
+  $(sec).scrollIntoView({behavior:'smooth'});
+}
+
+// === Regression Tab ===
+async function regAddItem(content,origFile=null,filename=null){
+  const item={id:state.regNextId++,type:'image',content:await compressImage(content),embedding:null,zone:'reg-pool',filename};
+  if(origFile)state.regOrigFiles.set(item.id,origFile);state.regItems.set(item.id,item);
+  enqueueEmbed(item,'regItems');
+  regRender();
+}
+async function regUpload(files){for(const f of files){if(!f.type.startsWith('image/'))continue;const r=new FileReader();r.onload=()=>regAddItem(r.result,f,f.name);r.readAsDataURL(f)}}
+
+window.regClearPool=()=>{[...state.regItems.keys()].filter(id=>!state.regConcepts.some(c=>c.items.includes(id))).forEach(id=>{state.regItems.delete(id);state.regOrigFiles.delete(id)});pendingItems=pendingItems.filter(p=>p.store!=='regItems'||state.regItems.has(p.item.id));updateEmbedStatus();regRender();debouncedSave()};
+window.regAddConcept=()=>{const used=state.regConcepts.map(c=>{const m=c.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.regConcepts.push({id:state.regCid++,name:'Concept '+n,open:true,on:true,reversed:false,items:[]});regRender();debouncedSave()};
+window.regDelConcept=cid=>{if(state.regConcepts.length<1)return;state.regConcepts=state.regConcepts.filter(c=>c.id!==cid);regRender();debouncedSave()};
+window.regTogConcept=cid=>{const c=state.regConcepts.find(x=>x.id===cid);if(c)c.open^=1;regRender()};
+window.regTogConceptOn=(cid,v)=>{const c=state.regConcepts.find(x=>x.id===cid);if(c)c.on=v;regRender();debouncedSave()};
+window.regReverseConcept=cid=>{const c=state.regConcepts.find(x=>x.id===cid);if(c)c.reversed^=1;regRender();debouncedSave()};
+window.regRenameConcept=(cid,el)=>{const c=state.regConcepts.find(x=>x.id===cid);if(!c)return;const input=document.createElement('input');input.type='text';input.value=c.name;input.className='bg-gray-700 px-1 rounded text-sm w-full';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){c.name=input.value.trim()||c.name;regRender();debouncedSave()}else if(e.key==='Escape')regRender()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
+window.regRemoveFromConcept=(cid,itemId)=>{const c=state.regConcepts.find(x=>x.id===cid);if(c)c.items=c.items.filter(x=>x!==itemId);regRender();debouncedSave()};
+window.regRemoveItem=id=>{state.regConcepts.forEach(c=>c.items=c.items.filter(x=>x!==id));state.regItems.delete(id);state.regOrigFiles.delete(id);regRender();debouncedSave()};
+
+function regRender(){
+  const pool=$('reg-pool');if(!pool)return;
+  const inConcept=new Set(state.regConcepts.flatMap(c=>c.items));
+  pool.innerHTML='';
+  [...state.regItems.values()].filter(i=>!inConcept.has(i.id)).forEach(item=>{
+    const el=document.createElement('div');el.className='reg-item'+(item.embedding?'':' opacity-50');el.dataset.rid=item.id;el.draggable=true;
+    el.innerHTML=`<img src="${item.content}" onclick="showPreview(${item.id},true)"><div class="reg-rm" onclick="event.stopPropagation();regRemoveItem(${item.id})">×</div>`;
+    el.ondragstart=e=>{e.dataTransfer.setData('reg-id',item.id);regDragItemId=item.id};
+    pool.appendChild(el);
+  });
+  $('reg-item-count').textContent=state.regItems.size+' items';
+
+  const cc=$('reg-concepts');cc.innerHTML='';
+  state.regConcepts.forEach(c=>{
+    const div=document.createElement('div');div.className='reg-concept'+(c.on?'':' opacity-50');
+    div.innerHTML=`<div class="flex items-center gap-2 p-2 cursor-pointer" onclick="regTogConcept(${c.id})"><input type="checkbox"${c.on?' checked':''} class="accent-purple-500 w-3 h-3" onchange="regTogConceptOn(${c.id},this.checked)" onclick="event.stopPropagation()"><span class="font-bold text-sm flex-1 px-1 rounded hover:bg-gray-600" ondblclick="event.stopPropagation();regRenameConcept(${c.id},this)">${c.name}${c.reversed?'<span class="text-yellow-400 text-xs ml-1">⇄</span>':''} <span class="text-gray-500 text-xs">(${c.items.length})</span></span><button onclick="regReverseConcept(${c.id});event.stopPropagation()" class="text-[10px] ${c.reversed?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500" title="Reverse">⇄</button><span class="text-gray-400 text-xs">${c.open?'▼':'▶'}</span>${state.regConcepts.length>1?`<span class="text-red-400 cursor-pointer px-1 text-xs" onclick="regDelConcept(${c.id});event.stopPropagation()">×</span>`:''}</div>${c.open?`<div class="reg-drop p-2" data-reg-zone="${c.id}"></div>`:''}`;
+    cc.appendChild(div);
+    if(c.open){
+      const zone=div.querySelector('.reg-drop');
+      c.items.forEach((itemId,idx)=>{
+        const item=state.regItems.get(itemId);if(!item)return;
+        const el=document.createElement('div');el.className='reg-item';el.draggable=true;el.dataset.rid=itemId;el.dataset.cid=c.id;
+        el.innerHTML=`<img src="${item.content}" onclick="showPreview(${item.id},true)"><div class="reg-rm" onclick="event.stopPropagation();regRemoveFromConcept(${c.id},${item.id})">×</div><div class="text-[9px] text-gray-400 text-center w-full">#${idx+1}</div>`;
+        el.ondragstart=e=>{e.dataTransfer.setData('reg-id',itemId);regDragItemId=itemId};
+        el.ondragover=e=>{e.preventDefault();e.stopPropagation();if(regDragItemId===itemId)return;const rect=el.getBoundingClientRect(),mid=rect.left+rect.width/2;el.classList.toggle('drag-over-left',e.clientX<mid);el.classList.toggle('drag-over-right',e.clientX>=mid)};
+        el.ondragleave=()=>{el.classList.remove('drag-over-left','drag-over-right')};
+        el.ondrop=e=>{e.preventDefault();e.stopPropagation();el.classList.remove('drag-over-left','drag-over-right');const dragId=+e.dataTransfer.getData('reg-id');if(dragId===itemId||isNaN(dragId)||!state.regItems.has(dragId))return;const rect=el.getBoundingClientRect(),insertBefore=e.clientX<rect.left+rect.width/2;state.regConcepts.forEach(x=>x.items=x.items.filter(i=>i!==dragId));let targetIdx=c.items.indexOf(itemId);if(!insertBefore)targetIdx++;c.items.splice(targetIdx,0,dragId);regRender();debouncedSave()};
+        zone.appendChild(el);
+      });
+      zone.ondragover=e=>{e.preventDefault();zone.classList.add('drag-over')};
+      zone.ondragleave=()=>zone.classList.remove('drag-over');
+      zone.ondrop=e=>{
+        e.preventDefault();zone.classList.remove('drag-over');
+        const id=+e.dataTransfer.getData('reg-id');if(isNaN(id)||!state.regItems.has(id))return;
+        const itemEls=[...zone.querySelectorAll('.reg-item')].filter(el=>+el.dataset.rid!==id);
+        let insertIdx=itemEls.length;
+        for(let i=0;i<itemEls.length;i++){const rect=itemEls[i].getBoundingClientRect();if(e.clientX<rect.left+rect.width/2){insertIdx=i;break}}
+        state.regConcepts.forEach(x=>x.items=x.items.filter(i=>i!==id));
+        c.items.splice(insertIdx,0,id);regRender();debouncedSave();
+      };
+    }
+  });
+}
+
+window.regCalculate=()=>{
+  const showAll=$('reg-filter-all').checked;
+  const validConcepts=state.regConcepts.filter(c=>c.on&&c.items.length>=2&&c.items.every(id=>state.regItems.get(id)?.embedding));
+  if(!validConcepts.length){alert('Need at least one enabled concept with ≥2 embedded items');return}
+  const inConcept=new Set(state.regConcepts.flatMap(c=>c.items));
+  const allItems=[...state.regItems.values()].filter(i=>i.embedding&&(showAll||!inConcept.has(i.id)));
+  if(!allItems.length){alert('No embedded items to rank');return}
+
+  const conceptDirs=validConcepts.map(c=>{
+    let cItems=c.items.map(id=>state.regItems.get(id)).filter(x=>x?.embedding);
+    if(c.reversed)cItems=[...cItems].reverse();
+    const N=cItems.length;
+    const X=cItems.map(i=>i.embedding);
+    const y=Array.from({length:N}, (_,i)=>N>1 ? 1-2*(i/(N-1)) : 0);
+    const w=ridge(X, y);
+    return{concept:c,dir:norm(w)};
+  });
+
+  const results=allItems.map(item=>{
+    const scores={};
+    conceptDirs.forEach(({concept,dir})=>{scores[concept.id]=dot(item.embedding,dir)});
+    return{...item,score:applyAgg(scores,state.regAggMode),cScores:scores};
+  }).sort((a,b)=>b.score-a.score);
+
+  const aggLabels={linear:'mean(s)',sqrt:'mean(√s)',square:'max(score)'};
+  const meta=(validConcepts.length>1?`Avg of ${validConcepts.length} concepts`:validConcepts[0].name)+` · ${aggLabels[state.regAggMode]}`;
+  
+  render(results,meta,{
+    sec:'reg-results-section',con:'reg-results-content',met:'reg-result-meta',stKey:'regLastResults',
+    isReg:true,
+    ttFn:item=>item.cScores?Object.entries(item.cScores).map(([id,s])=>{const c=state.regConcepts.find(x=>x.id==+id);return`${c?.name||'?'}${c?.reversed?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):''
+  });
+};
+
+init();
+</script>
+</body>
+</html>

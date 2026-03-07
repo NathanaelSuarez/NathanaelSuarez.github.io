@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text Concept Ranker (Snowflake Arctic)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<style>
+.item-card{background:#374151;border-radius:8px;padding:8px;cursor:grab;transition:.2s;user-select:none;display:inline-flex;flex-direction:column;align-items:center;gap:4px;position:relative;max-width:140px}
+.item-card:hover{background:#4B5563;transform:scale(1.02)}
+.item-card .remove-btn{position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;opacity:0;transition:.2s;z-index:10}
+.item-card .edit-btn{position:absolute;top:-6px;left:-6px;width:20px;height:20px;background:#3B82F6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:.2s;z-index:10}
+.item-card:hover .remove-btn, .item-card:hover .edit-btn{opacity:1}
+.item-card span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;font-size:.75rem;padding:.5rem;width:100%;text-align:left;max-height:80px;word-break:break-word}
+.drop-zone{min-height:110px;border:2px dashed #4B5563;border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;gap:8px;transition:.2s}
+.drop-zone.drag-over{background:rgba(255,255,255,.05);border-color:#3B82F6}
+#nomic-pool{max-height:250px;overflow-y:auto}
+.spinner{width:40px;height:40px;border:4px solid #374151;border-top-color:#3B82F6;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
+.custom-scroll::-webkit-scrollbar{width:4px}
+.custom-scroll::-webkit-scrollbar-track{background:transparent}
+.custom-scroll::-webkit-scrollbar-thumb{background:#4B5563;border-radius:10px}
+.score-cell{cursor:help;position:relative}
+.score-cell:hover .score-tooltip{display:block}
+.score-tooltip{display:none;position:absolute;bottom:100%;right:0;background:#1F2937;border:1px solid #4B5563;padding:8px;border-radius:8px;font-size:11px;white-space:pre;z-index:20;min-width:120px}
+.grp-collapsed{padding:6px 12px!important}
+.grp-name:hover{background:#4B5563}
+#sidebar{width:220px;min-width:220px;background:#1F2937;border-right:1px solid #374151;overflow-y:auto;display:flex;flex-direction:column}
+#sidebar .proj-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #374151;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;transition:.15s}
+#sidebar .proj-item:hover{background:#374151}
+#sidebar .proj-item.active{background:#3B82F6;font-weight:bold}
+#sidebar .proj-item .del-proj{opacity:0;color:#F87171;font-size:14px;cursor:pointer}
+#sidebar .proj-item:hover .del-proj{opacity:1}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:50;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+.modal-box{background:#1F2937;border:1px solid #4B5563;border-radius:12px;padding:1.5rem;max-width:550px;width:100%;max-height:80vh;overflow-y:auto}
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex">
+<div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
+  <div class="spinner"></div><p id="loading-text" class="mt-4 text-lg font-bold">Initializing Snowflake Model...</p>
+  <p class="text-gray-400 text-sm mb-4">First load downloads ~300MB (Int8 Quantized)</p>
+  <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
+</div>
+
+<div id="sidebar">
+  <div class="p-3 border-b border-gray-700 flex justify-between items-center">
+    <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Projects</span>
+    <button onclick="newProject()" class="text-lg leading-none bg-blue-600 hover:bg-blue-700 w-6 h-6 rounded flex items-center justify-center" title="New Project">+</button>
+  </div>
+  <div id="project-list" class="flex-1 overflow-y-auto custom-scroll"></div>
+</div>
+
+<div class="flex-1 overflow-y-auto p-4">
+<div class="max-w-5xl mx-auto">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Text Concept Ranker</h1>
+    <div class="flex gap-2">
+      <button id="share-btn" onclick="openShareModal()" class="text-xs bg-green-900/50 hover:bg-green-800 text-green-200 px-3 py-2 rounded-lg border border-green-700 transition">📤 Share</button>
+      <button onclick="clearCurrentProject()" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-200 px-3 py-2 rounded-lg border border-red-700 transition">🗑️ Clear</button>
+    </div>
+  </div>
+
+  <div id="section-nomic" class="space-y-6">
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
+      <div class="flex flex-col md:flex-row gap-4">
+        <div class="flex-[2] flex flex-col gap-2">
+          <label class="block text-xs font-bold text-gray-500 uppercase">Add Text to Pool</label>
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <textarea id="nomic-text-input" placeholder="Enter document text to rank..." class="w-full bg-gray-700 p-3 rounded-lg border border-gray-600 outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"></textarea>
+              <div id="nomic-token-info" class="text-[10px] font-bold text-gray-500 uppercase mt-1">Tokens: <span id="nomic-token-count">0</span> / 8192</div>
+            </div>
+            <button id="nomic-add-btn" class="bg-purple-600 hover:bg-purple-700 h-fit py-3 px-6 rounded-lg font-medium self-start">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+      <div class="flex justify-between mb-2 text-sm font-bold text-gray-400">ITEM POOL <span id="nomic-count">0 items</span></div>
+      <div id="nomic-pool" class="drop-zone" data-zone="pool"><p class="pool-placeholder text-gray-500 text-sm w-full text-center py-8">Add text documents to rank</p></div>
+    </div>
+
+    <div id="concept-groups" class="space-y-2"></div>
+
+    <div class="text-center pb-10 space-y-4">
+      <div class="flex items-center justify-center flex-wrap gap-6 bg-gray-800 p-4 rounded-xl border border-gray-700 w-fit mx-auto">
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-bold text-gray-400 uppercase">Include Groups in Results</label>
+          <input type="checkbox" id="nomic-filter-all" class="accent-purple-500 w-4 h-4">
+        </div>
+      </div>
+      <button id="nomic-calculate-btn" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🚀 Rank by Semantic Similarity</button>
+    </div>
+  </div>
+
+  <div id="results-section" class="bg-gray-800 p-6 rounded-xl hidden mb-20 border border-gray-700">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-bold">Ranked Results</h2>
+      <div class="flex items-center gap-3">
+        <button id="copy-all-btn" onclick="copyAllResults()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-bold transition flex items-center gap-2">📋 Copy All</button>
+        <div id="result-meta" class="text-sm text-gray-400"></div>
+      </div>
+    </div>
+    <div id="results-content" class="space-y-3"></div>
+  </div>
+</div>
+</div>
+
+<script type="module">
+import{pipeline,AutoTokenizer,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
+env.allowRemoteModels=true;env.allowLocalModels=false;
+
+const $=id=>document.getElementById(id);
+const state={nomic:{items:new Map(),nextId:0,models:{},groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1},lastResults:[]};
+const PREFIX='';
+
+const PROJ_DB='TextRankerProjects';
+let currentProjId=null;
+
+function getProjMeta(){return JSON.parse(localStorage.getItem(PROJ_DB+'_meta')||'[]')}
+function setProjMeta(m){localStorage.setItem(PROJ_DB+'_meta',JSON.stringify(m))}
+function uniqueName(name,meta){const names=meta.map(p=>p.name);if(!names.includes(name))return name;let n=2;while(names.includes(`${name} (${n})`))n++;return`${name} (${n})`}
+
+function renderProjects(){
+  const list=$('project-list'),meta=getProjMeta();
+  list.innerHTML=meta.map(p=>`<div class="proj-item${p.id===currentProjId?' active':''}" onclick="switchProject('${p.id}')"><span class="truncate flex-1">${p.name}</span><span class="del-proj" onclick="event.stopPropagation();deleteProject('${p.id}')" title="Delete">×</span></div>`).join('');
+}
+
+window.newProject=(name)=>{
+  const meta=getProjMeta(),id='p_'+Date.now();
+  name=name||prompt('Project name:','Project '+(meta.length+1));if(!name)return;
+  name=uniqueName(name,meta);
+  meta.push({id,name});setProjMeta(meta);
+  switchProject(id);
+};
+
+window.deleteProject=async(id)=>{
+  if(!confirm('Delete this project?'))return;
+  let meta=getProjMeta();meta=meta.filter(p=>p.id!==id);setProjMeta(meta);
+  const db=await dbPromise;const tx=db.transaction('appState','readwrite');tx.objectStore('appState').delete('items_'+id);tx.objectStore('appState').delete('state_'+id);
+  if(id===currentProjId){currentProjId=meta.length?meta[0].id:null;if(currentProjId)switchProject(currentProjId);else{state.nomic.items.clear();state.nomic.nextId=0;state.nomic.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.nomic.gid=1;document.querySelectorAll('.item-card').forEach(e=>e.remove());renderGroups();updateCounts();renderProjects()}}
+  else renderProjects();
+};
+
+window.switchProject=async(id)=>{
+  if(currentProjId)await saveToDB();
+  currentProjId=id;
+  state.nomic.items.clear();state.nomic.nextId=0;
+  state.nomic.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.nomic.gid=1;
+  document.querySelectorAll('.item-card').forEach(e=>e.remove());
+  $('results-section').classList.add('hidden');
+  await loadFromDB();renderGroups();updateCounts();renderProjects();
+};
+
+const DB_NAME='NomicPermanentDB',DB_VERSION=2;
+const dbPromise=new Promise((res,rej)=>{
+  const r=indexedDB.open(DB_NAME,DB_VERSION);
+  r.onerror=e=>rej(e.target.error);
+  r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('appState'))db.createObjectStore('appState',{keyPath:'id'})};
+  r.onsuccess=e=>res(e.target.result);
+});
+
+async function saveToDB(){
+  if(!currentProjId)return;
+  const db=await dbPromise,tx=db.transaction('appState','readwrite'),s=tx.objectStore('appState');
+  s.put({id:'items_'+currentProjId,items:[...state.nomic.items.values()]});
+  s.put({id:'state_'+currentProjId,nextId:state.nomic.nextId,groups:state.nomic.groups,gid:state.nomic.gid});
+}
+
+async function loadFromDB(){
+  if(!currentProjId)return;
+  const db=await dbPromise;
+  return new Promise(res=>{
+    const tx=db.transaction('appState','readonly'),s=tx.objectStore('appState');
+    const r1=s.get('items_'+currentProjId),r2=s.get('state_'+currentProjId);
+    let c=0;const done=()=>{if(++c===2)res()};
+    r1.onsuccess=()=>{if(r1.result)r1.result.items.forEach(i=>{state.nomic.items.set(i.id,i)});done()};
+    r2.onsuccess=()=>{if(r2.result){state.nomic.nextId=r2.result.nextId||0;if(r2.result.groups){state.nomic.groups=r2.result.groups.map(g=>({...g,swapped:g.swapped||false}));state.nomic.gid=r2.result.gid}}done()};
+  });
+}
+
+window.copyAllResults=()=>{
+  if(!state.lastResults.length)return;
+  const txt=state.lastResults.map((r,i)=>`Rank: ${i+1}\nScore: ${r.score.toFixed(4)}\n${r.content}`).join('\n\n\n');
+  navigator.clipboard.writeText(txt).then(()=>{const b=$('copy-all-btn'),o=b.innerHTML;b.innerHTML='✅ Copied!';setTimeout(()=>b.innerHTML=o,2000)});
+};
+
+// ---- SHARE MODAL ----
+window.openShareModal=()=>{
+  const col=state.nomic,items=[...col.items.values()];
+  if(!items.length){alert('No items to share!');return}
+  const meta=getProjMeta(),cur=meta.find(p=>p.id===currentProjId);
+  const bg=document.createElement('div');bg.className='modal-bg';bg.onclick=e=>{if(e.target===bg)bg.remove()};
+  let grpHtml=col.groups.map(g=>{
+    const pn=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding).length;
+    const nn=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding).length;
+    return`<label class="flex items-center gap-2 text-sm"><input type="checkbox" checked data-gid="${g.id}" class="share-grp accent-purple-500"><span class="flex-1">${g.name} <span class="text-gray-500">(+${pn} -${nn})</span></span></label>`;
+  }).join('');
+  bg.innerHTML=`<div class="modal-box space-y-4">
+    <h3 class="text-lg font-bold">📤 Share Project</h3>
+    <div><label class="text-xs font-bold text-gray-400 uppercase">Project Name</label><input id="share-name" class="w-full bg-gray-700 p-2 rounded border border-gray-600 mt-1 text-sm" value="${cur?.name||'Shared Project'}"></div>
+    <div><label class="text-xs font-bold text-gray-400 uppercase">Concepts to Share</label><div class="space-y-1 mt-1">${grpHtml}</div></div>
+    <div class="space-y-1">
+      <label class="text-xs font-bold text-gray-400 uppercase">Include</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="share-texts" checked class="accent-purple-500">Item texts</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="share-embeds" class="accent-purple-500">Pre-computed embeddings <span class="text-gray-500 text-xs">(larger URL)</span></label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="share-cvecs" class="accent-purple-500">Concept vectors only <span class="text-gray-500 text-xs">(smallest, no texts)</span></label>
+    </div>
+    <div class="bg-gray-800 rounded p-3 text-xs space-y-1">
+      <div class="flex justify-between"><span>Estimated URL size:</span><span id="share-size" class="font-mono">-</span></div>
+      <div class="h-2 bg-gray-900 rounded-full overflow-hidden"><div id="share-bar" class="h-full bg-green-500 transition-all" style="width:0"></div></div>
+      <div id="share-warn" class="text-yellow-400 hidden">⚠️ URL may be too long for some browsers (>32KB)</div>
+    </div>
+    <div class="flex justify-end gap-2"><button onclick="this.closest('.modal-bg').remove()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button><button id="share-go" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-bold">📋 Copy Link</button></div>
+  </div>`;
+  document.body.appendChild(bg);
+  const calc=()=>{const d=buildShareData(bg);if(!d){$('share-size').textContent='N/A';return}const url=location.origin+location.pathname+'?d='+LZString.compressToEncodedURIComponent(JSON.stringify(d));const kb=(url.length/1024).toFixed(1);$('share-size').textContent=kb+'KB';const pct=Math.min(url.length/65000*100,100);$('share-bar').style.width=pct+'%';$('share-bar').className='h-full transition-all '+(pct>50?pct>80?'bg-red-500':'bg-yellow-500':'bg-green-500');$('share-warn').classList.toggle('hidden',url.length<32000)};
+  bg.querySelectorAll('input').forEach(i=>i.onchange=calc);calc();
+  bg.querySelector('#share-go').onclick=async()=>{
+    const d=buildShareData(bg);if(!d){alert('Nothing selected');return}
+    const url=location.origin+location.pathname+'?d='+LZString.compressToEncodedURIComponent(JSON.stringify(d));
+    await navigator.clipboard.writeText(url);bg.querySelector('#share-go').textContent='✅ Copied!';setTimeout(()=>bg.remove(),1200);
+  };
+};
+
+function buildShareData(modal){
+  const col=state.nomic,gids=[...modal.querySelectorAll('.share-grp:checked')].map(e=>+e.dataset.gid);
+  if(!gids.length)return null;
+  const texts=modal.querySelector('#share-texts').checked,embeds=modal.querySelector('#share-embeds').checked,cvecs=modal.querySelector('#share-cvecs').checked;
+  const name=modal.querySelector('#share-name').value.trim()||'Shared';
+  const selGroups=col.groups.filter(g=>gids.includes(g.id));
+  const selItems=texts?[...col.items.values()].filter(i=>{if(i.zone==='pool')return true;return gids.some(id=>i.zone===`pos-${id}`||i.zone===`neg-${id}`)}):[]; 
+  const d={n:name,g:selGroups.map(g=>({id:g.id,name:g.name,on:g.on,open:g.open,swapped:g.swapped}))};
+  if(texts){d.i=selItems.map(x=>{const o={c:x.content,z:x.zone};if(embeds&&x.embedding)o.e=x.embedding.map(v=>+v.toFixed(5));return o})}
+  if(cvecs){d.v={};selGroups.forEach(g=>{let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);if(g.swapped)[pos,neg]=[neg,pos];if(pos.length)d.v['p'+g.id]=centroid(pos).map(v=>+v.toFixed(5));if(neg.length)d.v['n'+g.id]=centroid(neg).map(v=>+v.toFixed(5))})}
+  return d;
+}
+
+async function loadFromURL(){
+  const p=new URLSearchParams(location.search),d=p.get('d');if(!d)return;
+  try{
+    const c=JSON.parse(LZString.decompressFromEncodedURIComponent(d));
+    const meta=getProjMeta(),projName=uniqueName(c.n||'Shared',meta),id='p_'+Date.now();
+    meta.push({id,name:projName});setProjMeta(meta);
+    if(currentProjId)await saveToDB();
+    currentProjId=id;state.nomic.items.clear();state.nomic.nextId=0;
+    document.querySelectorAll('.item-card').forEach(e=>e.remove());
+    if(c.g){state.nomic.groups=c.g.map(g=>({...g,swapped:g.swapped||false}));state.nomic.gid=Math.max(...c.g.map(g=>g.id))+1}
+    if(c.i)for(const x of c.i){const item={id:state.nomic.nextId++,type:'text',content:x.c,embedding:x.e||null,zone:x.z||'pool'};state.nomic.items.set(item.id,item)}
+    // Compute missing embeddings
+    for(const[,item]of state.nomic.items){if(!item.embedding){item.embedding=await computeEmbedding(item.content)}}
+    await saveToDB();history.replaceState(null,'',location.pathname);
+  }catch(e){console.error('Share load error',e)}
+}
+
+window.clearCurrentProject=async()=>{
+  if(!confirm('Clear workspace?'))return;
+  state.nomic.items.clear();state.nomic.nextId=0;
+  state.nomic.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.nomic.gid=1;
+  document.querySelectorAll('.item-card').forEach(e=>e.remove());
+  renderGroups();updateCounts();$('results-section').classList.add('hidden');await saveToDB();
+};
+
+// ---- CONCEPT GROUPS ----
+function makeCard(item){
+  const card=document.createElement('div');
+  card.className='item-card'+(item.embedding?'':' opacity-50');
+  card.draggable=true;card.dataset.id=item.id;card.title=item.content;
+  card.innerHTML=`<div class="edit-btn" onclick="editItem(${item.id})" title="Edit">✎</div><span>${item.content}</span><div class="remove-btn" onclick="removeItem(${item.id})" title="Remove">×</div>`;
+  card.ondragstart=e=>e.dataTransfer.setData('id',item.id);
+  return card;
+}
+
+function renderGroups(){
+  document.querySelectorAll('.item-card').forEach(e=>e.remove());
+  const frag=document.createDocumentFragment();
+  state.nomic.groups.forEach(g=>{
+    const div=document.createElement('div');
+    div.className=`bg-gray-800 rounded-xl border border-gray-700${g.on?'':' opacity-50'}`;
+    const swapInd=g.swapped?'<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>':'';
+    div.innerHTML=`<div class="flex items-center gap-2 p-3 ${g.open?'':'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on?' checked':''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded">${g.name}${swapInd}</span><button onclick="renameGrpPrompt(${g.id});event.stopPropagation()" class="text-[10px] bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500" title="Rename">✏️</button><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open?'▼':'▶'}</span>${state.nomic.groups.length>1?`<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>`:''}</div><div class="${g.open?'grid':'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped?'border-red-500':'border-green-500'} pl-3"><div class="text-sm mb-2"><span class="${g.swapped?'text-red-400':'text-green-400'} font-bold">${g.swapped?'➖ Negative':'➕ Positive'}</span></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped?'border-green-500':'border-red-500'} pl-3"><div class="text-sm mb-2"><span class="${g.swapped?'text-green-400':'text-red-400'} font-bold">${g.swapped?'➕ Positive':'➖ Negative'}</span></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
+    frag.appendChild(div);
+  });
+  if(state.nomic.groups.length<10){const btn=document.createElement('button');btn.className='w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';btn.textContent=`+ Add Concept Group (${state.nomic.groups.length}/10)`;btn.onclick=addGrp;frag.appendChild(btn)}
+  $('concept-groups').innerHTML='';$('concept-groups').appendChild(frag);
+  [...state.nomic.items.values()].forEach(item=>{
+    const zone=item.zone==='pool'?$('nomic-pool'):(document.querySelector(`[data-zone="${item.zone}"]`)||$('nomic-pool'));
+    if(!document.querySelector(`[data-zone="${item.zone}"]`)&&item.zone!=='pool')item.zone='pool';
+    zone.appendChild(makeCard(item));
+  });
+  setupDropZones();
+}
+
+function setupDropZones(){
+  document.querySelectorAll('.drop-zone').forEach(z=>{
+    z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};
+    z.ondragleave=z.ondrop=e=>{z.classList.remove('drag-over');if(e.type==='drop'){e.preventDefault();const id=+e.dataTransfer.getData('id');if(!isNaN(id)&&state.nomic.items.has(id)){const it=state.nomic.items.get(id);it.zone=z.dataset.zone;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c)z.appendChild(c);saveToDB()}}};
+  });
+}
+
+window.renameGrpPrompt=(id)=>{const g=state.nomic.groups.find(x=>x.id===id);if(!g)return;const n=prompt('Rename concept:',g.name);if(n&&n.trim()){g.name=n.trim();renderGroups();saveToDB()}};
+window.addGrp=()=>{if(state.nomic.groups.length>=10)return;const used=state.nomic.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.nomic.groups.push({id:state.nomic.gid++,name:'Concept '+n,on:true,open:true,swapped:false});renderGroups();saveToDB()};
+window.delGrp=id=>{if(state.nomic.groups.length<2)return;[...state.nomic.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool'});state.nomic.groups=state.nomic.groups.filter(g=>g.id!==id);renderGroups();saveToDB()};
+window.togGrp=(id,v)=>{state.nomic.groups.find(g=>g.id===id).on=v;renderGroups();saveToDB()};
+window.togColl=id=>{const g=state.nomic.groups.find(x=>x.id===id);g.open=!g.open;renderGroups()};
+window.swapGrp=id=>{state.nomic.groups.find(g=>g.id===id).swapped^=1;renderGroups();saveToDB()};
+
+function createCardElement(item){
+  const z=item.zone==='pool'?$('nomic-pool'):document.querySelector(`[data-zone="${item.zone}"]`)||$('nomic-pool');
+  z.appendChild(makeCard(item));
+}
+
+function updateCounts(){
+  $('nomic-count').textContent=state.nomic.items.size+' items';
+  const ph=$('nomic-pool').querySelector('.pool-placeholder');
+  if(ph)ph.style.display=state.nomic.items.size?'none':'block';
+}
+
+async function computeEmbedding(text){
+  let output=await state.nomic.models.extractor(PREFIX+text,{pooling:'cls'});
+  output=output.normalize(2,-1);return Array.from(output.data);
+}
+
+const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+const norm=v=>{let s=0;for(let i=0;i<v.length;i++)s+=v[i]*v[i];const m=Math.sqrt(s);return v.map(x=>x/(m||1))};
+const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
+
+async function addItem(content,zone='pool'){
+  const col=state.nomic,item={id:col.nextId++,type:'text',content,embedding:null,zone};
+  col.items.set(item.id,item);createCardElement(item);updateCounts();
+  item.embedding=await computeEmbedding(content);
+  const card=document.querySelector(`.item-card[data-id="${item.id}"]`);
+  if(card)card.classList.remove('opacity-50');saveToDB();
+}
+
+window.removeItem=id=>{
+  const col=state.nomic,item=col.items.get(id);if(!item)return;
+  const card=document.querySelector(`.item-card[data-id="${id}"]`);
+  if(item.zone!=='pool'){item.zone='pool';$('nomic-pool').appendChild(card)}
+  else{col.items.delete(id);card.remove()}
+  updateCounts();saveToDB();
+};
+
+window.editItem=async(id)=>{
+  const item=state.nomic.items.get(id);if(!item)return;
+  const bg=document.createElement('div');bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal-box flex flex-col gap-2"><div class="flex justify-between font-bold"><span>Edit Item</span><span class="text-xs text-gray-400 font-normal">Ctrl+Enter to save</span></div><textarea class="flex-1 bg-gray-900 border border-gray-700 p-3 rounded-lg outline-none custom-scroll text-sm min-h-[200px]">${item.content}</textarea><div class="flex justify-end gap-2 mt-2"><button class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" onclick="this.closest('.modal-bg').remove()">Cancel</button><button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm" id="save-edit-btn">Save</button></div></div>`;
+  const ta=bg.querySelector('textarea');
+  const save=async()=>{const v=ta.value.trim();bg.remove();if(v&&v!==item.content){item.content=v;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c){c.title=v;c.querySelector('span').textContent=v;c.classList.add('opacity-50')}item.embedding=await computeEmbedding(v);if(c)c.classList.remove('opacity-50');saveToDB();if(!$('results-section').classList.contains('hidden'))$('nomic-calculate-btn').click()}};
+  bg.querySelector('#save-edit-btn').onclick=save;
+  ta.onkeydown=e=>{if(e.key==='Enter'&&e.ctrlKey)save();else if(e.key==='Escape')bg.remove()};
+  bg.onclick=e=>{if(e.target===bg)bg.remove()};
+  document.body.appendChild(bg);ta.focus();
+};
+
+const updateProgress=(p,t)=>{$('progress-bar').style.width=p+'%';if(t)$('loading-text').textContent=t};
+
+function setupEvents(){
+  const countTokens=async()=>{const t=$('nomic-text-input').value;if(!t){$('nomic-token-count').textContent='0';$('nomic-token-count').style.color='';$('nomic-add-btn').disabled=false;return}const{input_ids}=await state.nomic.models.tokenizer(PREFIX+t);const c=input_ids.size;$('nomic-token-count').textContent=c;const over=c>8192;$('nomic-add-btn').disabled=over;$('nomic-token-count').style.color=over?'#EF4444':''};
+  $('nomic-text-input').oninput=countTokens;
+  $('nomic-add-btn').onclick=async()=>{const v=$('nomic-text-input').value.trim();if(v&&!$('nomic-add-btn').disabled){await addItem(v);$('nomic-text-input').value='';countTokens()}};
+  $('nomic-text-input').onkeydown=e=>{if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();$('nomic-add-btn').click()}};
+
+  $('nomic-calculate-btn').onclick=()=>{
+    const col=state.nomic,showAll=$('nomic-filter-all').checked;
+    const cands=[...col.items.values()].filter(i=>i.embedding&&(showAll||i.zone==='pool'));
+    if(!cands.length){alert('No items in pool to rank!');return}
+    const validGrps=col.groups.filter(g=>g.on&&[...col.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
+    if(!validGrps.length){alert('Add items to at least one enabled concept group.');return}
+    const results=cands.map(item=>{
+      const scores={},rawScores={};
+      validGrps.forEach(g=>{
+        let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
+        let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+        if(g.swapped)[pos,neg]=[neg,pos];
+        let sc=0;
+        if(pos.length&&neg.length){const cP=centroid(pos),cN=centroid(neg);sc=dot(item.embedding,norm(cP.map((v,i)=>v-cN[i])))}
+        else if(pos.length)sc=dot(item.embedding,norm(centroid(pos)));
+        else if(neg.length)sc=-dot(item.embedding,norm(centroid(neg)));
+        scores[g.id]=sc;rawScores[g.id]=g.swapped?-sc:sc;
+      });
+      return{...item,score:Object.values(scores).reduce((a,b)=>a+b,0)/validGrps.length,gScores:scores,rawScores};
+    });
+    render(results.sort((a,b)=>b.score-a.score,validGrps.length>1?`Avg of ${validGrps.length} groups`:validGrps[0].name));
+  };
+}
+
+function render(data,meta){
+  state.lastResults=data;$('results-section').classList.remove('hidden');$('result-meta').textContent=meta||'';
+  const max=Math.max(...data.map(d=>d.score)),min=Math.min(...data.map(d=>d.score)),range=max-min||1;
+  $('results-content').innerHTML=data.map((item,i)=>{
+    const n=(item.score-min)/range;
+    const tt=item.rawScores?Object.entries(item.rawScores).map(([id,s])=>{const g=state.nomic.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'';
+    return`<div class="flex items-center gap-4 bg-gray-700/50 p-3 rounded-xl border border-gray-600">
+      <div class="text-xl font-black text-gray-500 w-8">${i+1}</div>
+      <div class="w-16 h-16 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>
+      <div class="flex-1 min-w-0">
+        <details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1 group-open:text-blue-300"><span class="truncate line-clamp-1 flex-1">${item.content}</span><button onclick="editItem(${item.id});event.preventDefault();" class="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition">Edit</button><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 hidden group-open:block">▲</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>
+        <div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.5?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div>
+      </div></div>`}).join('');
+  $('results-section').scrollIntoView({behavior:'smooth'});
+}
+
+async function init(){
+  const MODEL='Snowflake/snowflake-arctic-embed-m-v2.0';
+  updateProgress(10,"Loading tokenizer...");
+  state.nomic.models.tokenizer=await AutoTokenizer.from_pretrained(MODEL);
+  updateProgress(50,"Loading Snowflake Arctic Embed (Int8)...");
+  state.nomic.models.extractor=await pipeline('feature-extraction',MODEL,{dtype:'q8',progress_callback:p=>p.status==='progress'&&updateProgress(50+p.progress*.5)});
+  let meta=getProjMeta();
+  if(!meta.length){meta=[{id:'p_default',name:'Default'}];setProjMeta(meta);currentProjId='p_default'}
+  else currentProjId=meta[0].id;
+  await loadFromDB();await loadFromURL();
+  renderGroups();updateCounts();renderProjects();
+  $('loading-overlay').remove();setupEvents();
+}
+init();
+</script>
+</body>
+</html>

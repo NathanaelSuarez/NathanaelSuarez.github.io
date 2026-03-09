@@ -176,7 +176,6 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
     </div>
   </div>
   
-  <!-- Attribution & Privacy Footer -->
   <footer class="mt-12 mb-8 text-center text-gray-500 text-xs space-y-1">
     <p>Powered by MobileCLIP via Transformers.js</p>
     <p class="flex items-center justify-center gap-1">
@@ -196,9 +195,8 @@ const state={items:new Map(),nextId:0,models:{},lastResults:[],groups:[{id:0,nam
 regItems:new Map(),regNextId:0,regConcepts:[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}],regCid:1,regAggMode:'linear',regLastResults:[]};
 window.appState=state;
 
-// --- Batch inference queue ---
 const BATCH_SIZE=4;
-let pendingItems=[];    // {item, store:'items'|'regItems'}
+let pendingItems=[];
 let batchRunning=false;
 
 const yieldToMain=()=>new Promise(r=>setTimeout(r,0));
@@ -215,17 +213,13 @@ async function processBatchQueue(){
   batchRunning=true;
   while(pendingItems.length>0){
     updateEmbedStatus();
-    // Split into image and text batches
     const batch=pendingItems.splice(0,BATCH_SIZE);
     const imgBatch=batch.filter(b=>b.item.type==='image'&&(b.store==='items'?state.items:state.regItems).has(b.item.id));
     const txtBatch=batch.filter(b=>b.item.type==='text'&&state.items.has(b.item.id));
 
-    // Process images in parallel
     if(imgBatch.length>0){
       try{
         const images=await Promise.all(imgBatch.map(b=>RawImage.read(b.item.content)));
-        // Process one at a time through the model (model may not support true batching well)
-        // but we parallelize the image loading above
         for(let i=0;i<imgBatch.length;i++){
           const b=imgBatch[i],store=b.store==='items'?state.items:state.regItems;
           if(!store.has(b.item.id))continue;
@@ -240,7 +234,6 @@ async function processBatchQueue(){
       }catch(e){console.error('batch img err',e)}
     }
 
-    // Process text
     for(const b of txtBatch){
       if(!state.items.has(b.item.id))continue;
       try{
@@ -252,7 +245,7 @@ async function processBatchQueue(){
     }
 
     debouncedSave();
-    await yieldToMain(); // Let UI breathe between batches
+    await yieldToMain();
   }
   updateEmbedStatus();
   batchRunning=false;
@@ -300,7 +293,6 @@ const dbPromise=new Promise((res,rej)=>{
   r.onsuccess=e=>res(e.target.result);
 });
 
-// Debounced save to reduce IDB writes
 let saveTimer=null;
 function debouncedSave(){if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveToDB()},500)}
 
@@ -513,15 +505,14 @@ window.calculateRankings=()=>{
     groupWeights[g.id] = X.length ? ridge(X, y, sw) : new Array(512).fill(0);
   });
 
+  const getSc=(i,g)=>{let sc=dot(i.embedding,groupWeights[g.id]);return g.outlierPenalty&&groupMeanPos[g.id]?(sc+dot(i.embedding,groupMeanPos[g.id]))/2:sc};
+  validGrps.forEach(g=>{let a=cands.map(i=>getSc(i,g)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;g._f=0.5/sd});
+
   const results=cands.map(item=>{
     const scores={},rawScores={};
     validGrps.forEach(g=>{
-      let sc = dot(item.embedding, groupWeights[g.id]);
-      if (g.outlierPenalty && groupMeanPos[g.id]) {
-        sc = (sc + dot(item.embedding, groupMeanPos[g.id])) / 2;
-      }
-      scores[g.id] = sc; 
-      rawScores[g.id] = g.swapped ? -sc : sc;
+      let sc=getSc(item,g)*g._f;
+      scores[g.id]=sc;rawScores[g.id]=g.swapped?-sc:sc;
     });
     return{...item,score:applyAgg(scores,state.aggMode),gScores:scores,rawScores};
   });
@@ -629,10 +620,12 @@ window.regCalculate=()=>{
     const w=ridge(X, y);
     return{concept:c,dir:norm(w)};
   });
+  
+  conceptDirs.forEach(c=>{let a=allItems.map(i=>dot(i.embedding,c.dir)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;c._f=0.5/sd});
 
   const results=allItems.map(item=>{
     const scores={};
-    conceptDirs.forEach(({concept,dir})=>{scores[concept.id]=dot(item.embedding,dir)});
+    conceptDirs.forEach(({concept,dir,_f})=>{scores[concept.id]=dot(item.embedding,dir)*_f});
     return{...item,score:applyAgg(scores,state.regAggMode),cScores:scores};
   }).sort((a,b)=>b.score-a.score);
 

@@ -90,6 +90,14 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
           <label class="text-xs font-bold text-gray-400 uppercase">Include Groups in Results</label>
           <input type="checkbox" id="nomic-filter-all" class="accent-purple-500 w-4 h-4">
         </div>
+        <div class="flex items-center gap-2 border-l border-gray-600 pl-6">
+          <label class="text-xs font-bold text-gray-400 uppercase">Combine</label>
+          <select id="agg-method" class="bg-gray-700 text-white rounded p-1 text-xs border border-gray-600 outline-none focus:ring-1 focus:ring-purple-500">
+            <option value="avg">Average</option>
+            <option value="max">Maximum</option>
+            <option value="min">Minimum</option>
+          </select>
+        </div>
       </div>
       <button id="nomic-calculate-btn" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🚀 Rank by Semantic Similarity</button>
     </div>
@@ -187,7 +195,6 @@ window.copyAllResults=()=>{
   navigator.clipboard.writeText(txt).then(()=>{const b=$('copy-all-btn'),o=b.innerHTML;b.innerHTML='✅ Copied!';setTimeout(()=>b.innerHTML=o,2000)});
 };
 
-// ---- SHARE MODAL ----
 window.openShareModal=()=>{
   const col=state.nomic,items=[...col.items.values()];
   if(!items.length){alert('No items to share!');return}
@@ -249,7 +256,6 @@ async function loadFromURL(){
     document.querySelectorAll('.item-card').forEach(e=>e.remove());
     if(c.g){state.nomic.groups=c.g.map(g=>({...g,swapped:g.swapped||false}));state.nomic.gid=Math.max(...c.g.map(g=>g.id))+1}
     if(c.i)for(const x of c.i){const item={id:state.nomic.nextId++,type:'text',content:x.c,embedding:x.e||null,zone:x.z||'pool'};state.nomic.items.set(item.id,item)}
-    // Compute missing embeddings
     for(const[,item]of state.nomic.items){if(!item.embedding){item.embedding=await computeEmbedding(item.content)}}
     await saveToDB();history.replaceState(null,'',location.pathname);
   }catch(e){console.error('Share load error',e)}
@@ -263,7 +269,6 @@ window.clearCurrentProject=async()=>{
   renderGroups();updateCounts();$('results-section').classList.add('hidden');await saveToDB();
 };
 
-// ---- CONCEPT GROUPS ----
 function makeCard(item){
   const card=document.createElement('div');
   card.className='item-card'+(item.embedding?'':' opacity-50');
@@ -327,6 +332,46 @@ const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 const norm=v=>{let s=0;for(let i=0;i<v.length;i++)s+=v[i]*v[i];const m=Math.sqrt(s);return v.map(x=>x/(m||1))};
 const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
 
+// Ridge regression via closed-form: w = (X^T X + λI)^{-1} X^T y
+function ridgeRegression(pos, neg, lambda=1.0) {
+  if (!pos.length && !neg.length) return null;
+  if (!neg.length) return norm(centroid(pos));
+  if (!pos.length) return norm(centroid(neg).map(x => -x));
+
+  const X = [...pos, ...neg].map(i => i.embedding);
+  const y = [...pos.map(() => 1), ...neg.map(() => -1)];
+  const N = X.length, D = X[0].length;
+
+  const K = Array.from({length: N}, (_, i) =>
+    Array.from({length: N}, (_, j) => dot(X[i], X[j]))
+  );
+  for (let i = 0; i < N; i++) K[i][i] += lambda;
+
+  const aug = K.map((row, i) => [...row, y[i]]);
+  for (let col = 0; col < N; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < N; row++)
+      if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row;
+    [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+    const pivot = aug[col][col];
+    if (Math.abs(pivot) < 1e-12) continue;
+    for (let j = col; j <= N; j++) aug[col][j] /= pivot;
+    for (let row = 0; row < N; row++) {
+      if (row === col) continue;
+      const f = aug[row][col];
+      for (let j = col; j <= N; j++) aug[row][j] -= f * aug[col][j];
+    }
+  }
+  const alpha = aug.map(row => row[N]);
+
+  const w = new Array(D).fill(0);
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < D; j++)
+      w[j] += alpha[i] * X[i][j];
+
+  return norm(w);
+}
+
 async function addItem(content,zone='pool'){
   const col=state.nomic,item={id:col.nextId++,type:'text',content,embedding:null,zone};
   col.items.set(item.id,item);createCardElement(item);updateCounts();
@@ -369,21 +414,62 @@ function setupEvents(){
     if(!cands.length){alert('No items in pool to rank!');return}
     const validGrps=col.groups.filter(g=>g.on&&[...col.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
     if(!validGrps.length){alert('Add items to at least one enabled concept group.');return}
-    const results=cands.map(item=>{
-      const scores={},rawScores={};
-      validGrps.forEach(g=>{
-        let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
-        let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
-        if(g.swapped)[pos,neg]=[neg,pos];
-        let sc=0;
-        if(pos.length&&neg.length){const cP=centroid(pos),cN=centroid(neg);sc=dot(item.embedding,norm(cP.map((v,i)=>v-cN[i])))}
-        else if(pos.length)sc=dot(item.embedding,norm(centroid(pos)));
-        else if(neg.length)sc=-dot(item.embedding,norm(centroid(neg)));
-        scores[g.id]=sc;rawScores[g.id]=g.swapped?-sc:sc;
-      });
-      return{...item,score:Object.values(scores).reduce((a,b)=>a+b,0)/validGrps.length,gScores:scores,rawScores};
+
+    // Build concept directions
+    const cVecs={}, rawGrp={}, isSingle={};
+    validGrps.forEach(g=>{
+      let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
+      let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+      if(g.swapped)[pos,neg]=[neg,pos];
+      cVecs[g.id]=ridgeRegression(pos, neg);
+      rawGrp[g.id]=[];
+      isSingle[g.id]=!(pos.length&&neg.length); // True if it only has positives OR only negatives
     });
-    render(results.sort((a,b)=>b.score-a.score,validGrps.length>1?`Avg of ${validGrps.length} groups`:validGrps[0].name));
+
+    // Compute raw scores
+    cands.forEach(item=>{
+      item._raw={};
+      validGrps.forEach(g=>{
+        const sc=dot(item.embedding, cVecs[g.id]);
+        item._raw[g.id]=sc;
+        rawGrp[g.id].push(sc);
+      });
+    });
+
+    // Determine offsets and exactly 0.5 std normalization for balancing Concepts
+    const scales={}, offsets={};
+    validGrps.forEach(g=>{
+      const arr=rawGrp[g.id];
+      // If single-sided concept, center the mean to 0. Otherwise keep 0 unchanged.
+      const mean = isSingle[g.id] ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+      offsets[g.id] = mean;
+
+      // Std deviation relative to the anchor (mean for single, 0 for double)
+      const variance = arr.reduce((a,v)=>a+Math.pow(v-mean, 2),0)/arr.length;
+      const std = Math.sqrt(variance)||1;
+      scales[g.id] = 0.5/std; // Set to exactly 0.5 standard deviation
+    });
+
+    // Apply normalization & combination aggregation
+    const agg=$('agg-method').value;
+    const results=cands.map(item=>{
+      const gScores={};
+      let arr=[];
+      validGrps.forEach(g=>{
+        const scaled=(item._raw[g.id] - offsets[g.id]) * scales[g.id];
+        gScores[g.id]=scaled;
+        arr.push(scaled);
+      });
+      let score=0;
+      if(agg==='avg')score=arr.reduce((a,b)=>a+b,0)/arr.length;
+      else if(agg==='max')score=Math.max(...arr);
+      else if(agg==='min')score=Math.min(...arr);
+
+      return{...item,score,gScores};
+    });
+
+    const metaStr=validGrps.length>1?`${agg.toUpperCase()} of ${validGrps.length} groups`:validGrps[0].name;
+    render(results.sort((a,b)=>b.score-a.score), metaStr);
   };
 }
 
@@ -392,13 +478,13 @@ function render(data,meta){
   const max=Math.max(...data.map(d=>d.score)),min=Math.min(...data.map(d=>d.score)),range=max-min||1;
   $('results-content').innerHTML=data.map((item,i)=>{
     const n=(item.score-min)/range;
-    const tt=item.rawScores?Object.entries(item.rawScores).map(([id,s])=>{const g=state.nomic.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'';
+    const tt=item.gScores?Object.entries(item.gScores).map(([id,s])=>{const g=state.nomic.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'';
     return`<div class="flex items-center gap-4 bg-gray-700/50 p-3 rounded-xl border border-gray-600">
       <div class="text-xl font-black text-gray-500 w-8">${i+1}</div>
       <div class="w-16 h-16 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>
       <div class="flex-1 min-w-0">
         <details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1 group-open:text-blue-300"><span class="truncate line-clamp-1 flex-1">${item.content}</span><button onclick="editItem(${item.id});event.preventDefault();" class="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition">Edit</button><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 hidden group-open:block">▲</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>
-        <div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.5?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div>
+        <div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.5?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip font-mono">${tt}</div>`:''}</div></div>
       </div></div>`}).join('');
   $('results-section').scrollIntoView({behavior:'smooth'});
 }

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinite P2P World</title>
+    
+    <!-- Libraries -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- LocalForage is a great wrapper for IndexedDB -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background-color: #1e1e1e; font-family: sans-serif; }
+        canvas { display: block; touch-action: none; }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; pointer-events: none;
+            display: flex; justify-content: space-between; padding: 10px; box-sizing: border-box;
+        }
+        
+        .panel {
+            background: rgba(0, 0, 0, 0.8); color: white; padding: 15px; border-radius: 8px;
+            pointer-events: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        #host-panel input[type="text"] { width: 100%; margin-top: 5px; padding: 5px; background: #333; color: white; border: 1px solid #555; }
+        #toolbar { display: flex; gap: 10px; align-items: center; }
+        input[type="color"] { cursor: pointer; border: none; padding: 0; height: 30px; width: 30px; background: transparent; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="panel" id="host-panel" style="display: none; max-width: 300px;">
+            <b>Host Menu</b>
+            <div style="font-size: 12px; margin-top: 5px; color: #aaa;">World auto-saves to your browser. Send link to sister:</div>
+            <input type="text" id="invite-link" readonly onclick="this.select()">
+            <div id="status" style="margin-top: 5px; color: #4CAF50; font-size: 14px;">Waiting...</div>
+        </div>
+
+        <div class="panel" id="client-panel" style="display: none;">
+            <b id="client-status">Connecting to Host...</b>
+        </div>
+
+        <div class="panel" id="toolbar">
+            <label for="color-picker">Color:</label>
+            <input type="color" id="color-picker" value="#ffffff">
+            <span style="font-size: 12px; color: #aaa; margin-left: 10px;">Drag to pan. Click to type. Ctrl+V to paste.</span>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // --- GAME CONFIG & STATE ---
+        const TILE_SIZE = 20;
+        let world = {}; // Format: "x,y" -> { char: 'A', color: '#fff' }
+        let cursors = {}; // Format: peerId -> { x, y, color }
+        let camera = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let myCursor = { x: 0, y: 0, active: false };
+        let myColor = "#ffffff";
+        let isHost = false;
+        
+        // --- P2P NETWORK SETUP ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinId = urlParams.get('join');
+        const peer = new Peer();
+        let connections = []; // Host can have multiple guests
+
+        if (!joinId) {
+            isHost = true;
+            document.getElementById('host-panel').style.display = 'block';
+            
+            // Load saved world from IndexedDB
+            localforage.getItem('infinite_world').then(savedWorld => {
+                if (savedWorld) world = savedWorld;
+            });
+
+            peer.on('open', (id) => {
+                const inviteUrl = window.location.origin + window.location.pathname + '?join=' + id;
+                document.getElementById('invite-link').value = inviteUrl;
+            });
+
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                document.getElementById('status').innerText = "Sister Joined!";
+                
+                conn.on('open', () => {
+                    // Send her the whole world instantly
+                    conn.send({ type: 'init', world: world });
+                });
+
+                conn.on('data', (data) => handleNetworkData(data, conn.peer));
+                conn.on('close', () => delete cursors[conn.peer]);
+            });
+        } else {
+            document.getElementById('client-panel').style.display = 'block';
+            peer.on('open', () => {
+                const conn = peer.connect(joinId);
+                connections.push(conn);
+                
+                conn.on('open', () => {
+                    document.getElementById('client-status').innerText = "Connected! You can type.";
+                    setTimeout(() => document.getElementById('client-panel').style.display = 'none', 3000);
+                });
+
+                conn.on('data', (data) => handleNetworkData(data, conn.peer));
+            });
+        }
+
+        // --- NETWORK DATA HANDLING ---
+        function handleNetworkData(data, peerId) {
+            if (data.type === 'init') {
+                world = data.world;
+            } else if (data.type === 'update') {
+                const key = `${data.x},${data.y}`;
+                if (data.char === '') delete world[key];
+                else world[key] = { char: data.char, color: data.color };
+                
+                // If Host receives data, broadcast to everyone else and save
+                if (isHost) {
+                    saveWorld();
+                    connections.forEach(c => { if (c.peer !== peerId) c.send(data) });
+                }
+            } else if (data.type === 'cursor') {
+                cursors[peerId] = { x: data.x, y: data.y, color: data.color };
+                if (isHost) connections.forEach(c => { if (c.peer !== peerId) c.send(data) });
+            }
+        }
+
+        function broadcastUpdate(x, y, char, color) {
+            const data = { type: 'update', x, y, char, color };
+            connections.forEach(c => c.send(data));
+        }
+
+        function broadcastCursor() {
+            if (!myCursor.active) return;
+            const data = { type: 'cursor', x: myCursor.x, y: myCursor.y, color: myColor };
+            connections.forEach(c => c.send(data));
+        }
+
+        // Host automatically saves world in IndexedDB
+        let saveTimeout;
+        function saveWorld() {
+            if (!isHost) return;
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                localforage.setItem('infinite_world', world);
+            }, 1000); // Debounce saving to prevent lag
+        }
+
+        // --- RENDER ENGINE (CANVAS) ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function draw() {
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(camera.x, camera.y);
+
+            // Draw grid dots
+            ctx.fillStyle = '#333';
+            const startX = Math.floor(-camera.x / TILE_SIZE) - 1;
+            const endX = startX + Math.ceil(canvas.width / TILE_SIZE) + 2;
+            const startY = Math.floor(-camera.y / TILE_SIZE) - 1;
+            const endY = startY + Math.ceil(canvas.height / TILE_SIZE) + 2;
+
+            for (let x = startX; x <= endX; x++) {
+                for (let y = startY; y <= endY; y++) {
+                    ctx.fillRect(x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2, 2, 2);
+                }
+            }
+
+            // Draw text (Optimized: only draw what's on screen)
+            ctx.font = `${TILE_SIZE - 4}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            for (const key in world) {
+                const [x, y] = key.split(',').map(Number);
+                if (x >= startX && x <= endX && y >= startY && y <= endY) {
+                    ctx.fillStyle = world[key].color;
+                    ctx.fillText(world[key].char, x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2 + 2);
+                }
+            }
+
+            // Draw my cursor
+            if (myCursor.active) {
+                ctx.strokeStyle = myColor;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(myCursor.x * TILE_SIZE, myCursor.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+
+            // Draw other players' cursors
+            for (const id in cursors) {
+                const c = cursors[id];
+                ctx.strokeStyle = c.color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]); // Dashed line for other players
+                ctx.strokeRect(c.x * TILE_SIZE, c.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                ctx.setLineDash([]);
+            }
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+        draw();
+
+        // --- INPUT HANDLING ---
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let cameraStart = { x: 0, y: 0 };
+
+        document.getElementById('color-picker').addEventListener('input', (e) => {
+            myColor = e.target.value;
+            broadcastCursor();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStart = { x: e.clientX, y: e.clientY };
+            cameraStart = { x: camera.x, y: camera.y };
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                camera.x = cameraStart.x + (e.clientX - dragStart.x);
+                camera.y = cameraStart.y + (e.clientY - dragStart.y);
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            // If we didn't drag far, treat it as a click to set the cursor
+            const dist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
+            if (dist < 5) {
+                myCursor.x = Math.floor((e.clientX - camera.x) / TILE_SIZE);
+                myCursor.y = Math.floor((e.clientY - camera.y) / TILE_SIZE);
+                myCursor.active = true;
+                broadcastCursor();
+            }
+        });
+
+        // Keyboard Typing
+        window.addEventListener('keydown', (e) => {
+            if (!myCursor.active || e.ctrlKey || e.metaKey) return;
+
+            const keyStr = `${myCursor.x},${myCursor.y}`;
+
+            if (e.key.length === 1) { // Normal character typed
+                world[keyStr] = { char: e.key, color: myColor };
+                broadcastUpdate(myCursor.x, myCursor.y, e.key, myColor);
+                if (isHost) saveWorld();
+                myCursor.x++; // Auto advance right
+            } else if (e.key === 'Backspace') {
+                myCursor.x--; // Move back
+                delete world[`${myCursor.x},${myCursor.y}`];
+                broadcastUpdate(myCursor.x, myCursor.y, '', myColor);
+                if (isHost) saveWorld();
+            } else if (e.key === 'Enter') {
+                myCursor.y++;
+            } else if (e.key === 'ArrowRight') myCursor.x++;
+            else if (e.key === 'ArrowLeft') myCursor.x--;
+            else if (e.key === 'ArrowUp') myCursor.y--;
+            else if (e.key === 'ArrowDown') myCursor.y++;
+
+            broadcastCursor();
+        });
+
+        // Paste functionality
+        window.addEventListener('paste', (e) => {
+            if (!myCursor.active) return;
+            const pasteText = (e.clipboardData || window.clipboardData).getData('text');
+            const lines = pasteText.split('\n');
+            
+            let startX = myCursor.x;
+            for (let i = 0; i < lines.length; i++) {
+                for (let j = 0; j < lines[i].length; j++) {
+                    const char = lines[i][j];
+                    world[`${startX + j},${myCursor.y + i}`] = { char: char, color: myColor };
+                    broadcastUpdate(startX + j, myCursor.y + i, char, myColor);
+                }
+            }
+            if (isHost) saveWorld();
+            myCursor.x = startX + lines[lines.length-1].length;
+            myCursor.y += lines.length - 1;
+            broadcastCursor();
+        });
+
+    </script>
+</body>
+</html>

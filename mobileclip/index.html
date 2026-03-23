@@ -414,8 +414,8 @@ function ridge(X, y, sampleWeights=null) {
   for(let i=0; i<D; i++) {
     let maxRow=i, maxEl=Math.abs(XtWX[i][i]);
     for(let k=i+1; k<D; k++) if(Math.abs(XtWX[k][i])>maxEl) { maxEl=Math.abs(XtWX[k][i]); maxRow=k; }
-    [XtWX[i], XtWX[maxRow]] = [XtWX[maxRow], XtWX[i]];
-    [I[i], I[maxRow]] = [I[maxRow], I[i]];
+    [XtWX[i], XtWX[maxRow]] =[XtWX[maxRow], XtWX[i]];
+    [I[i], I[maxRow]] =[I[maxRow], I[i]];
     const f = XtWX[i][i];
     if(Math.abs(f) < 1e-12) continue;
     for(let j=0; j<D; j++) { XtWX[i][j]/=f; I[i][j]/=f; }
@@ -492,7 +492,6 @@ window.calculateRankings=()=>{
   validGrps.forEach(g => {
     let pos=[...state.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
     let neg=[...state.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
-    if(g.swapped)[pos,neg]=[neg,pos];
     
     if (g.outlierPenalty && pos.length > 0) {
       const meanVec = new Float64Array(512);
@@ -506,16 +505,24 @@ window.calculateRankings=()=>{
     neg.forEach(n=>{X.push(n.embedding); y.push(-1); sw.push(wN)});
     if(!nP||!nN){ for(let i=0;i<sw.length;i++) sw[i]=1; }
     groupWeights[g.id] = X.length ? ridge(X, y, sw) : new Array(512).fill(0);
+    g._nP = nP;
+    g._nN = nN;
   });
 
   const getSc=(i,g)=>{let sc=dot(i.embedding,groupWeights[g.id]);return g.outlierPenalty&&groupMeanPos[g.id]?(sc+dot(i.embedding,groupMeanPos[g.id]))/2:sc};
-  validGrps.forEach(g=>{let a=cands.map(i=>getSc(i,g)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;g._f=0.5/sd});
+  
+  validGrps.forEach(g=>{
+    let a=cands.map(i=>getSc(i,g)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;
+    g._f=0.5/sd;
+    g._m = (!g._nP || !g._nN) ? m : 0;
+  });
 
   const results=cands.map(item=>{
     const scores={},rawScores={};
     validGrps.forEach(g=>{
-      let sc=getSc(item,g)*g._f;
-      scores[g.id]=sc;rawScores[g.id]=g.swapped?-sc:sc;
+      let sc=(getSc(item,g) - g._m)*g._f;
+      if(g.swapped) sc = -sc;
+      scores[g.id]=sc;rawScores[g.id]=sc;
     });
     return{...item,score:applyAgg(scores,state.aggMode),gScores:scores,rawScores};
   });
@@ -565,8 +572,7 @@ window.regRemoveItem=id=>{state.regConcepts.forEach(c=>c.items=c.items.filter(x=
 function regRender(){
   const pool=$('reg-pool');if(!pool)return;
   const inConcept=new Set(state.regConcepts.flatMap(c=>c.items));
-  pool.innerHTML='';
-  [...state.regItems.values()].filter(i=>!inConcept.has(i.id)).forEach(item=>{
+  pool.innerHTML='';[...state.regItems.values()].filter(i=>!inConcept.has(i.id)).forEach(item=>{
     const el=document.createElement('div');el.className='reg-item'+(item.embedding?'':' opacity-50');el.dataset.rid=item.id;el.draggable=true;
     el.innerHTML=`<img src="${item.content}" onclick="showPreview(${item.id},true)"><div class="reg-rm" onclick="event.stopPropagation();regRemoveItem(${item.id})">×</div>`;
     el.ondragstart=e=>{e.dataTransfer.setData('reg-id',item.id);regDragItemId=item.id};

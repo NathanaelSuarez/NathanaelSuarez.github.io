@@ -147,8 +147,20 @@ window.newProject=(name)=>{
 window.deleteProject=async(id)=>{
   if(!confirm('Delete this project?'))return;
   let meta=getProjMeta();meta=meta.filter(p=>p.id!==id);setProjMeta(meta);
-  const db=await dbPromise;const tx=db.transaction('appState','readwrite');tx.objectStore('appState').delete('items_'+id);tx.objectStore('appState').delete('state_'+id);
-  if(id===currentProjId){currentProjId=meta.length?meta[0].id:null;if(currentProjId)switchProject(currentProjId);else{state.nomic.items.clear();state.nomic.nextId=0;state.nomic.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.nomic.gid=1;document.querySelectorAll('.item-card').forEach(e=>e.remove());renderGroups();updateCounts();renderProjects()}}
+  const db=await dbPromise;const tx=db.transaction('appState','readwrite');
+  tx.objectStore('appState').delete('items_'+id);
+  tx.objectStore('appState').delete('state_'+id);
+  
+  if(id===currentProjId){
+    currentProjId=null; // Prevent saving the state of the deleted project over the new target
+    const nextId=meta.length?meta[0].id:null;
+    if(nextId){
+        switchProject(nextId);
+    } else {
+        state.nomic.items.clear();state.nomic.nextId=0;state.nomic.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.nomic.gid=1;
+        document.querySelectorAll('.item-card').forEach(e=>e.remove());renderGroups();updateCounts();renderProjects()
+    }
+  }
   else renderProjects();
 };
 
@@ -174,7 +186,18 @@ async function saveToDB(){
   if(!currentProjId)return;
   const db=await dbPromise,tx=db.transaction('appState','readwrite'),s=tx.objectStore('appState');
   s.put({id:'items_'+currentProjId,items:[...state.nomic.items.values()]});
-  s.put({id:'state_'+currentProjId,nextId:state.nomic.nextId,groups:state.nomic.groups,gid:state.nomic.gid});
+  
+  // Sync the current project name into IndexedDB state so it can be recovered if localStorage wipes
+  const meta = getProjMeta();
+  const currentName = meta.find(p=>p.id===currentProjId)?.name || 'Recovered Project';
+  
+  s.put({
+    id:'state_'+currentProjId,
+    nextId:state.nomic.nextId,
+    groups:state.nomic.groups,
+    gid:state.nomic.gid,
+    projectName: currentName
+  });
 }
 
 async function loadFromDB(){
@@ -185,7 +208,9 @@ async function loadFromDB(){
     const r1=s.get('items_'+currentProjId),r2=s.get('state_'+currentProjId);
     let c=0;const done=()=>{if(++c===2)res()};
     r1.onsuccess=()=>{if(r1.result)r1.result.items.forEach(i=>{state.nomic.items.set(i.id,i)});done()};
+    r1.onerror=()=>done();
     r2.onsuccess=()=>{if(r2.result){state.nomic.nextId=r2.result.nextId||0;if(r2.result.groups){state.nomic.groups=r2.result.groups.map(g=>({...g,swapped:g.swapped||false}));state.nomic.gid=r2.result.gid}}done()};
+    r2.onerror=()=>done();
   });
 }
 
@@ -332,43 +357,25 @@ const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 const norm=v=>{let s=0;for(let i=0;i<v.length;i++)s+=v[i]*v[i];const m=Math.sqrt(s);return v.map(x=>x/(m||1))};
 const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
 
-// Ridge regression via closed-form: w = (X^T X + λI)^{-1} X^T y
 function ridgeRegression(pos, neg, lambda=1.0) {
   if (!pos.length && !neg.length) return null;
   if (!neg.length) return norm(centroid(pos));
   if (!pos.length) return norm(centroid(neg).map(x => -x));
-
-  const X = [...pos, ...neg].map(i => i.embedding);
-  const y = [...pos.map(() => 1), ...neg.map(() => -1)];
-  const N = X.length, D = X[0].length;
-
-  const K = Array.from({length: N}, (_, i) =>
-    Array.from({length: N}, (_, j) => dot(X[i], X[j]))
-  );
+  const X = [...pos, ...neg].map(i => i.embedding), y = [...pos.map(() => 1), ...neg.map(() => -1)];
+  const N = X.length, D = X[0].length, K = Array.from({length: N}, (_, i) => Array.from({length: N}, (_, j) => dot(X[i], X[j])));
   for (let i = 0; i < N; i++) K[i][i] += lambda;
-
   const aug = K.map((row, i) => [...row, y[i]]);
   for (let col = 0; col < N; col++) {
     let maxRow = col;
-    for (let row = col + 1; row < N; row++)
-      if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row;
+    for (let row = col + 1; row < N; row++) if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row;
     [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
     const pivot = aug[col][col];
     if (Math.abs(pivot) < 1e-12) continue;
     for (let j = col; j <= N; j++) aug[col][j] /= pivot;
-    for (let row = 0; row < N; row++) {
-      if (row === col) continue;
-      const f = aug[row][col];
-      for (let j = col; j <= N; j++) aug[row][j] -= f * aug[col][j];
-    }
+    for (let row = 0; row < N; row++) { if (row === col) continue; const f = aug[row][col]; for (let j = col; j <= N; j++) aug[row][j] -= f * aug[col][j]; }
   }
-  const alpha = aug.map(row => row[N]);
-
-  const w = new Array(D).fill(0);
-  for (let i = 0; i < N; i++)
-    for (let j = 0; j < D; j++)
-      w[j] += alpha[i] * X[i][j];
-
+  const alpha = aug.map(row => row[N]), w = new Array(D).fill(0);
+  for (let i = 0; i < N; i++) for (let j = 0; j < D; j++) w[j] += alpha[i] * X[i][j];
   return norm(w);
 }
 
@@ -415,7 +422,6 @@ function setupEvents(){
     const validGrps=col.groups.filter(g=>g.on&&[...col.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
     if(!validGrps.length){alert('Add items to at least one enabled concept group.');return}
 
-    // Build concept directions
     const cVecs={}, rawGrp={}, isSingle={};
     validGrps.forEach(g=>{
       let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
@@ -423,10 +429,9 @@ function setupEvents(){
       if(g.swapped)[pos,neg]=[neg,pos];
       cVecs[g.id]=ridgeRegression(pos, neg);
       rawGrp[g.id]=[];
-      isSingle[g.id]=!(pos.length&&neg.length); // True if it only has positives OR only negatives
+      isSingle[g.id]=!(pos.length&&neg.length);
     });
 
-    // Compute raw scores
     cands.forEach(item=>{
       item._raw={};
       validGrps.forEach(g=>{
@@ -436,35 +441,27 @@ function setupEvents(){
       });
     });
 
-    // Determine offsets and exactly 0.5 std normalization for balancing Concepts
     const scales={}, offsets={};
     validGrps.forEach(g=>{
       const arr=rawGrp[g.id];
-      // If single-sided concept, center the mean to 0. Otherwise keep 0 unchanged.
       const mean = isSingle[g.id] ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
       offsets[g.id] = mean;
-
-      // Std deviation relative to the anchor (mean for single, 0 for double)
       const variance = arr.reduce((a,v)=>a+Math.pow(v-mean, 2),0)/arr.length;
       const std = Math.sqrt(variance)||1;
-      scales[g.id] = 0.5/std; // Set to exactly 0.5 standard deviation
+      scales[g.id] = 0.5/std; 
     });
 
-    // Apply normalization & combination aggregation
     const agg=$('agg-method').value;
     const results=cands.map(item=>{
-      const gScores={};
-      let arr=[];
+      const gScores={}; let arr=[];
       validGrps.forEach(g=>{
         const scaled=(item._raw[g.id] - offsets[g.id]) * scales[g.id];
-        gScores[g.id]=scaled;
-        arr.push(scaled);
+        gScores[g.id]=scaled; arr.push(scaled);
       });
       let score=0;
       if(agg==='avg')score=arr.reduce((a,b)=>a+b,0)/arr.length;
       else if(agg==='max')score=Math.max(...arr);
       else if(agg==='min')score=Math.min(...arr);
-
       return{...item,score,gScores};
     });
 
@@ -493,11 +490,42 @@ async function init(){
   const MODEL='Snowflake/snowflake-arctic-embed-m-v2.0';
   updateProgress(10,"Loading tokenizer...");
   state.nomic.models.tokenizer=await AutoTokenizer.from_pretrained(MODEL);
-  updateProgress(50,"Loading Snowflake Arctic Embed (Int8)...");
+  updateProgress(50,"Loading Snowflake Arctic (Int8)...");
   state.nomic.models.extractor=await pipeline('feature-extraction',MODEL,{dtype:'q8',progress_callback:p=>p.status==='progress'&&updateProgress(50+p.progress*.5)});
+  
+  // --- SELF-HEALING RECOVERY LOGIC ---
+  const db = await dbPromise;
+  await new Promise(res => {
+    const tx = db.transaction('appState', 'readonly'), s = tx.objectStore('appState');
+    const req = s.getAllKeys();
+    req.onsuccess = async () => {
+      let meta = getProjMeta(), metaIds = new Set(meta.map(p => p.id)), changed = false;
+      for(const k of req.result) {
+        if(k.startsWith('state_')) {
+          const id = k.replace('state_', '');
+          if(!metaIds.has(id)) {
+            await new Promise(r => {
+                const getReq = db.transaction('appState', 'readonly').objectStore('appState').get(k);
+                getReq.onsuccess = () => {
+                    const recoveredName = getReq.result?.projectName || 'Recovered Data';
+                    meta.push({ id, name: recoveredName });
+                    changed = true; r();
+                };
+                getReq.onerror = () => r();
+            });
+          }
+        }
+      }
+      if(changed) setProjMeta(meta);
+      res();
+    };
+    req.onerror = () => res();
+  });
+
   let meta=getProjMeta();
   if(!meta.length){meta=[{id:'p_default',name:'Default'}];setProjMeta(meta);currentProjId='p_default'}
   else currentProjId=meta[0].id;
+  
   await loadFromDB();await loadFromURL();
   renderGroups();updateCounts();renderProjects();
   $('loading-overlay').remove();setupEvents();

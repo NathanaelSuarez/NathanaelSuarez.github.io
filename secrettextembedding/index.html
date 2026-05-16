@@ -405,21 +405,27 @@ function setupEvents(){
 
   $('nomic-calculate-btn').onclick=()=>{
     const col=state.nomic,showAll=$('nomic-filter-all').checked;
-    const cands=[...col.items.values()].filter(i=>i.embedding&&(showAll||i.zone==='pool'));
-    if(!cands.length){alert('No items in pool to rank!');return}
-    const validGrps=col.groups.filter(g=>g.on&&[...col.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
+    
+    // Calculate standard deviations and offsets using ALL embedded items in the project
+    // to ensure the scale remains stable regardless of the UI filter
+    const allItems=[...col.items.values()].filter(i=>i.embedding);
+    const cands=allItems.filter(i=>showAll||i.zone==='pool');
+    
+    if(!cands.length){alert('No items to rank!');return}
+    const validGrps=col.groups.filter(g=>g.on&&allItems.some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)));
     if(!validGrps.length){alert('Add items to at least one enabled concept group.');return}
 
     const cVecs={}, rawGrp={};
     validGrps.forEach(g=>{
-      let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
-      let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+      let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
+      let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
       if(g.swapped)[pos,neg]=[neg,pos];
       cVecs[g.id]=calculateConceptVector(pos, neg);
       rawGrp[g.id]=[];
     });
 
-    cands.forEach(item=>{
+    // Populate raw scores for ALL items so that variance is perfectly stable
+    allItems.forEach(item=>{
       item._raw={};
       validGrps.forEach(g=>{
         const sc=dot(item.embedding, cVecs[g.id]);
@@ -430,8 +436,8 @@ function setupEvents(){
 
     const scales={}, offsets={};
     validGrps.forEach(g=>{
-      let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
-      let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+      let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
+      let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
       if(g.swapped)[pos,neg]=[neg,pos];
 
       const arr=rawGrp[g.id];
@@ -449,7 +455,9 @@ function setupEvents(){
 
       // Standardize based on the variance of the overall pool
       const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
-      const std = Math.sqrt(variance)||1;
+      
+      // Ensure standard deviation never gets impossibly small and blows up the scale
+      const std = Math.max(Math.sqrt(variance), 0.0001);
       scales[g.id] = 0.5/std; 
     });
 

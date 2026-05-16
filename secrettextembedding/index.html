@@ -216,7 +216,7 @@ async function loadFromDB(){
 
 window.copyAllResults=()=>{
   if(!state.lastResults.length)return;
-  const txt=state.lastResults.map((r,i)=>`Rank: ${i+1}\nScore: ${r.score.toFixed(4)}\n${r.content}`).join('\n\n\n');
+  const txt=state.lastResults.map((r,i)=>`Rank: ${i+1}\nScore: ${r.score>0?'+':''}${r.score.toFixed(4)}\n${r.content}`).join('\n\n\n');
   navigator.clipboard.writeText(txt).then(()=>{const b=$('copy-all-btn'),o=b.innerHTML;b.innerHTML='✅ Copied!';setTimeout(()=>b.innerHTML=o,2000)});
 };
 
@@ -357,26 +357,14 @@ const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 const norm=v=>{let s=0;for(let i=0;i<v.length;i++)s+=v[i]*v[i];const m=Math.sqrt(s);return v.map(x=>x/(m||1))};
 const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
 
-function ridgeRegression(pos, neg, lambda=1.0) {
+function calculateConceptVector(pos, neg) {
   if (!pos.length && !neg.length) return null;
   if (!neg.length) return norm(centroid(pos));
   if (!pos.length) return norm(centroid(neg).map(x => -x));
-  const X = [...pos, ...neg].map(i => i.embedding), y = [...pos.map(() => 1), ...neg.map(() => -1)];
-  const N = X.length, D = X[0].length, K = Array.from({length: N}, (_, i) => Array.from({length: N}, (_, j) => dot(X[i], X[j])));
-  for (let i = 0; i < N; i++) K[i][i] += lambda;
-  const aug = K.map((row, i) => [...row, y[i]]);
-  for (let col = 0; col < N; col++) {
-    let maxRow = col;
-    for (let row = col + 1; row < N; row++) if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) maxRow = row;
-    [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
-    const pivot = aug[col][col];
-    if (Math.abs(pivot) < 1e-12) continue;
-    for (let j = col; j <= N; j++) aug[col][j] /= pivot;
-    for (let row = 0; row < N; row++) { if (row === col) continue; const f = aug[row][col]; for (let j = col; j <= N; j++) aug[row][j] -= f * aug[col][j]; }
-  }
-  const alpha = aug.map(row => row[N]), w = new Array(D).fill(0);
-  for (let i = 0; i < N; i++) for (let j = 0; j < D; j++) w[j] += alpha[i] * X[i][j];
-  return norm(w);
+  
+  const cPos = centroid(pos);
+  const cNeg = centroid(neg);
+  return norm(cPos.map((val, i) => val - cNeg[i]));
 }
 
 async function addItem(content,zone='pool'){
@@ -422,14 +410,13 @@ function setupEvents(){
     const validGrps=col.groups.filter(g=>g.on&&[...col.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
     if(!validGrps.length){alert('Add items to at least one enabled concept group.');return}
 
-    const cVecs={}, rawGrp={}, isSingle={};
+    const cVecs={}, rawGrp={};
     validGrps.forEach(g=>{
       let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
       let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
       if(g.swapped)[pos,neg]=[neg,pos];
-      cVecs[g.id]=ridgeRegression(pos, neg);
+      cVecs[g.id]=calculateConceptVector(pos, neg);
       rawGrp[g.id]=[];
-      isSingle[g.id]=!(pos.length&&neg.length);
     });
 
     cands.forEach(item=>{
@@ -443,10 +430,25 @@ function setupEvents(){
 
     const scales={}, offsets={};
     validGrps.forEach(g=>{
+      let pos=[...col.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
+      let neg=[...col.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
+      if(g.swapped)[pos,neg]=[neg,pos];
+
       const arr=rawGrp[g.id];
-      const mean = isSingle[g.id] ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
-      offsets[g.id] = mean;
-      const variance = arr.reduce((a,v)=>a+Math.pow(v-mean, 2),0)/arr.length;
+      const poolMean = arr.reduce((a,b)=>a+b,0)/arr.length;
+
+      // Calculate exact midpoint offset between POS and NEG so 0.0 is exactly neutral
+      if (pos.length && neg.length) {
+        const cPos = centroid(pos);
+        const cNeg = centroid(neg);
+        const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
+        offsets[g.id] = dot(mid, cVecs[g.id]);
+      } else {
+        offsets[g.id] = poolMean; // Fallback to pool mean if only one pole
+      }
+
+      // Standardize based on the variance of the overall pool
+      const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
       const std = Math.sqrt(variance)||1;
       scales[g.id] = 0.5/std; 
     });
@@ -477,11 +479,11 @@ function render(data,meta){
     const n=(item.score-min)/range;
     const tt=item.gScores?Object.entries(item.gScores).map(([id,s])=>{const g=state.nomic.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'';
     return`<div class="flex items-center gap-4 bg-gray-700/50 p-3 rounded-xl border border-gray-600">
-      <div class="text-xl font-black text-gray-500 w-8">${i+1}</div>
+      <div class="text-xl font-black text-gray-500 w-8 text-center">${i+1}</div>
       <div class="w-16 h-16 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>
       <div class="flex-1 min-w-0">
         <details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1 group-open:text-blue-300"><span class="truncate line-clamp-1 flex-1">${item.content}</span><button onclick="editItem(${item.id});event.preventDefault();" class="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition">Edit</button><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 hidden group-open:block">▲</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>
-        <div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.5?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip font-mono">${tt}</div>`:''}</div></div>
+        <div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>0?'text-green-400':'text-yellow-400'}">${item.score>0?'+':''}${item.score.toFixed(4)}${tt?`<div class="score-tooltip font-mono">${tt}</div>`:''}</div></div>
       </div></div>`}).join('');
   $('results-section').scrollIntoView({behavior:'smooth'});
 }

@@ -28,9 +28,6 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 .grp-name:hover{background:#4B5563}
 #preview-modal{display:none}
 #preview-modal.show{display:flex}
-.agg-btn{font-size:10px;padding:2px 8px;border-radius:6px;border:1px solid #4B5563;background:#1F2937;color:#9CA3AF;cursor:pointer;transition:.15s;white-space:nowrap}
-.agg-btn:hover{background:#374151;color:#D1D5DB}
-.agg-btn.active{background:#7C3AED;border-color:#7C3AED;color:#fff;font-weight:700}
 .tab-btn{padding:8px 24px;font-weight:700;border-radius:8px 8px 0 0;cursor:pointer;transition:.15s;border:1px solid transparent;border-bottom:none}
 .tab-btn.active{background:#1F2937;color:#fff;border-color:#4B5563}
 .tab-btn:not(.active){background:#374151;color:#9CA3AF}
@@ -104,11 +101,13 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
             <label class="text-xs font-bold text-gray-400 uppercase">Include Groups in Results</label>
             <input type="checkbox" id="filter-all" checked class="accent-purple-500 w-4 h-4">
         </div>
-        <div class="flex items-center gap-1.5">
-            <label class="text-xs font-bold text-gray-400 uppercase mr-1">Aggregation</label>
-            <button class="agg-btn active" data-agg="linear" onclick="setAgg('linear')">mean(s)</button>
-            <button class="agg-btn" data-agg="sqrt" onclick="setAgg('sqrt')">mean(√s)</button>
-            <button class="agg-btn" data-agg="square" onclick="setAgg('square')">max(score)</button>
+        <div class="flex items-center gap-2 border-l border-gray-600 pl-6">
+          <label class="text-xs font-bold text-gray-400 uppercase">Combine</label>
+          <select id="agg-method" class="bg-gray-700 text-white rounded p-1 text-xs border border-gray-600 outline-none focus:ring-1 focus:ring-purple-500">
+            <option value="avg">Average</option>
+            <option value="max">Maximum</option>
+            <option value="min">Minimum</option>
+          </select>
         </div>
       </div>
       <button id="calculate-btn" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🔍 Rank by Similarity</button>
@@ -154,11 +153,13 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
           <label class="text-xs font-bold text-gray-400 uppercase">Include Concepts in Results</label>
           <input type="checkbox" id="reg-filter-all" checked class="accent-purple-500 w-4 h-4">
         </div>
-        <div class="flex items-center gap-1.5">
-          <label class="text-xs font-bold text-gray-400 uppercase mr-1">Aggregation</label>
-          <button class="agg-btn active" data-reg-agg="linear" onclick="setRegAgg('linear')">mean(s)</button>
-          <button class="agg-btn" data-reg-agg="sqrt" onclick="setRegAgg('sqrt')">mean(√s)</button>
-          <button class="agg-btn" data-reg-agg="square" onclick="setRegAgg('square')">max(score)</button>
+        <div class="flex items-center gap-2 border-l border-gray-600 pl-6">
+          <label class="text-xs font-bold text-gray-400 uppercase">Combine</label>
+          <select id="reg-agg-method" class="bg-gray-700 text-white rounded p-1 text-xs border border-gray-600 outline-none focus:ring-1 focus:ring-purple-500">
+            <option value="avg">Average</option>
+            <option value="max">Maximum</option>
+            <option value="min">Minimum</option>
+          </select>
         </div>
       </div>
       <button onclick="regCalculate()" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🔍 Rank by Similarity</button>
@@ -190,12 +191,17 @@ import{AutoProcessor,AutoTokenizer,CLIPTextModelWithProjection,CLIPVisionModelWi
 env.allowRemoteModels=true;env.allowLocalModels=false;
 
 // Stop double click selecting text (but allow manual drag selection)
-document.addEventListener('mousedown',e=>{if(e.detail>1&&!['INPUT','TEXTAREA'].includes(e.target.tagName))e.preventDefault()});
+document.addEventListener('mousedown',e=>{if(e.detail>1&&!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))e.preventDefault()});
 
 const $=id=>document.getElementById(id);
 window.$=$;
-const state={items:new Map(),nextId:0,models:{},lastResults:[],groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false,outlierPenalty:false}],gid:1,origFiles:new Map(),regOrigFiles:new Map(),aggMode:'linear',
-regItems:new Map(),regNextId:0,regConcepts:[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}],regCid:1,regAggMode:'linear',regLastResults:[]};
+const state={
+  items:new Map(),nextId:0,models:{},lastResults:[],
+  groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1,
+  origFiles:new Map(),regOrigFiles:new Map(),
+  regItems:new Map(),regNextId:0,
+  regConcepts:[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}],regCid:1,regLastResults:[]
+};
 window.appState=state;
 
 const BATCH_SIZE=4;
@@ -268,9 +274,6 @@ window.switchTab=tab=>{
   $('tab-regression').classList.toggle('hidden',tab!=='regression');
 };
 
-window.setAgg=mode=>{state.aggMode=mode;document.querySelectorAll('.agg-btn:not([data-reg-agg])').forEach(b=>b.classList.toggle('active',b.dataset.agg===mode))};
-window.setRegAgg=mode=>{state.regAggMode=mode;document.querySelectorAll('[data-reg-agg]').forEach(b=>b.classList.toggle('active',b.dataset.regAgg===mode))};
-
 window.showPreview=(id,isReg=false)=>{
   const item=isReg?state.regItems.get(id):state.items.get(id);
   if(!item||item.type!=='image')return;
@@ -282,7 +285,7 @@ window.showPreview=(id,isReg=false)=>{
 
 window.copyResults=key=>{
   const data=state[key];if(!data?.length)return;
-  const txt=data.map((item,i)=>`Rank: ${i+1}\nScore: ${item.score.toFixed(4)}\n[${item.type.toUpperCase()}] ${item.type==='text'?item.content:item.filename||'Image'}`).join('\n\n\n');
+  const txt=data.map((item,i)=>`Rank: ${i+1}\nScore: ${item.score>0?'+':''}${item.score.toFixed(4)}\n[${item.type.toUpperCase()}] ${item.type==='text'?item.content:item.filename||'Image'}`).join('\n\n\n');
   navigator.clipboard.writeText(txt).then(()=>{const btn=event.target;const o=btn.innerHTML;btn.innerHTML='✅ Copied!';setTimeout(()=>btn.innerHTML=o,2000)});
 };
 
@@ -312,7 +315,7 @@ async function loadFromDB(){
     const tx=db.transaction(['appState','regState'],'readonly'),s=tx.objectStore('appState');
     const rg=s.get('groups');
     rg.onsuccess=()=>{
-      if(rg.result){state.groups=rg.result.groups.map(g=>({...g,swapped:g.swapped||false,outlierPenalty:!!g.outlierPenalty}));state.gid=rg.result.gid}
+      if(rg.result){state.groups=rg.result.groups.map(g=>({...g,swapped:g.swapped||false}));state.gid=rg.result.gid}
       renderGroups();
       const r=s.get('items');
       r.onsuccess=()=>{
@@ -334,7 +337,7 @@ window.clearAllData=async()=>{
   if(!confirm('Clear all data?'))return;
   pendingItems=[];updateEmbedStatus();
   state.items.clear();state.nextId=0;state.lastResults=[];state.origFiles.clear();state.regOrigFiles.clear();
-  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false,outlierPenalty:false}];state.gid=1;
+  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.gid=1;
   state.regItems.clear();state.regNextId=0;state.regConcepts=[{id:0,name:'Concept 1',open:true,on:true,reversed:false,items:[]}];state.regCid=1;state.regLastResults=[];
   document.querySelectorAll('.item-card').forEach(c=>c.remove());
   $('results-section').classList.add('hidden');$('reg-results-section').classList.add('hidden');
@@ -359,7 +362,7 @@ function renderGroups(){
   state.groups.forEach(g=>{
     const div=document.createElement('div');div.className=`bg-gray-800 rounded-xl border border-gray-700${g.on?'':' opacity-50'}`;
     const swapInd=g.swapped?'<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>':'';
-    div.innerHTML=`<div class="flex items-center gap-2 p-3 ${g.open?'':'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on?' checked':''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded" ondblclick="event.stopPropagation();renameGrp(${g.id},this)">${g.name}${swapInd}</span><button onclick="togOutlier(${g.id});event.stopPropagation()" class="text-[10px] ${g.outlierPenalty?'bg-orange-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-1" title="Outlier penalty">🎯</button><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-2" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open?'▼':'▶'}</span>${state.groups.length>1?`<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>`:''}</div><div class="${g.open?'grid':'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped?'border-red-500':'border-green-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-red-400':'text-green-400'} font-bold">${g.swapped?'➖ Negative':'➕ Positive'}</span><input type="file" id="pf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('pf${g.id}').click()" class="${g.swapped?'bg-red-600':'bg-green-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped?'border-green-500':'border-red-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-green-400':'text-red-400'} font-bold">${g.swapped?'➕ Positive':'➖ Negative'}</span><input type="file" id="nf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('nf${g.id}').click()" class="${g.swapped?'bg-green-600':'bg-red-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
+    div.innerHTML=`<div class="flex items-center gap-2 p-3 ${g.open?'':'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on?' checked':''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded" ondblclick="event.stopPropagation();renameGrp(${g.id},this)">${g.name}${swapInd}</span><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-2" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open?'▼':'▶'}</span>${state.groups.length>1?`<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>`:''}</div><div class="${g.open?'grid':'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped?'border-red-500':'border-green-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-red-400':'text-green-400'} font-bold">${g.swapped?'➖ Negative':'➕ Positive'}</span><input type="file" id="pf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('pf${g.id}').click()" class="${g.swapped?'bg-red-600':'bg-green-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped?'border-green-500':'border-red-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-green-400':'text-red-400'} font-bold">${g.swapped?'➕ Positive':'➖ Negative'}</span><input type="file" id="nf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('nf${g.id}').click()" class="${g.swapped?'bg-green-600':'bg-red-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
     frag.appendChild(div);
   });
   if(state.groups.length<10){const btn=document.createElement('button');btn.className='w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';btn.textContent=`+ Add Concept Group (${state.groups.length}/10)`;btn.onclick=addGrp;frag.appendChild(btn)}
@@ -370,12 +373,11 @@ function renderGroups(){
 }
 
 window.renameGrp=(id,el)=>{const g=state.groups.find(x=>x.id===id);if(!g)return;const input=document.createElement('input');input.type='text';input.value=g.name;input.className='bg-gray-700 px-1 rounded text-sm w-24';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){g.name=input.value.trim()||g.name;renderGroups();debouncedSave()}else if(e.key==='Escape')renderGroups()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
-window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false,outlierPenalty:false});renderGroups();debouncedSave()};
+window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false});renderGroups();debouncedSave()};
 window.delGrp=id=>{if(state.groups.length<2)return;[...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';const c=document.querySelector(`.item-card[data-id="${i.id}"]`);if(c)$('items-pool').appendChild(c)});state.groups=state.groups.filter(g=>g.id!==id);renderGroups();debouncedSave()};
 window.togGrp=(id,v)=>{state.groups.find(g=>g.id===id).on=v;renderGroups();debouncedSave()};
 window.togColl=id=>{state.groups.find(x=>x.id===id).open^=1;renderGroups()};
 window.swapGrp=id=>{state.groups.find(g=>g.id===id).swapped^=1;renderGroups();debouncedSave()};
-window.togOutlier=id=>{state.groups.find(x=>x.id===id).outlierPenalty^=1;renderGroups();debouncedSave()};
 
 async function compressImage(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),MAX=512;let w=img.width,h=img.height;if(w>h){if(w>MAX){h*=MAX/w;w=MAX}}else if(h>MAX){w*=MAX/h;h=MAX}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.8))};img.src=dataUrl})}
 
@@ -391,9 +393,22 @@ async function init(){
   await loadFromDB();updateCounts();$('loading-overlay').remove();setupEvents();
 }
 
-const norm=v=>{const m=Math.hypot(...v);return v.map(x=>x/(m||1))};
+// ===== Math Core Functions =====
 const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+const norm=v=>{const m=Math.hypot(...v);return v.map(x=>x/(m||1))};
+const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
 
+function calculateConceptVector(pos, neg) {
+  if (!pos.length && !neg.length) return null;
+  if (!neg.length) return norm(centroid(pos));
+  if (!pos.length) return norm(centroid(neg).map(x => -x));
+  
+  const cPos = centroid(pos);
+  const cNeg = centroid(neg);
+  return norm(cPos.map((val, i) => val - cNeg[i]));
+}
+
+// Regression specifically mathematically requires Ridge to find best fit through N sorted items
 function ridge(X, y, sampleWeights=null) {
   const N = X.length; if(!N) return [];
   const D = X[0].length;
@@ -429,8 +444,6 @@ function ridge(X, y, sampleWeights=null) {
   for(let i=0; i<D; i++) for(let j=0; j<D; j++) w[i] += I[i][j]*XtWy[j];
   return Array.from(w);
 }
-
-function applyAgg(scores,mode){const vals=Object.values(scores),n=vals.length;if(!n)return 0;if(mode==='sqrt')return vals.reduce((s,v)=>s+(v>=0?Math.sqrt(v):-Math.sqrt(-v)),0)/n;if(mode==='square')return Math.max(...vals);return vals.reduce((a,b)=>a+b,0)/n}
 
 async function addItem(type,content,zone='pool',origFile=null,filename=null){
   const item={id:state.nextId++,type,content,embedding:null,zone,filename};
@@ -481,53 +494,74 @@ const upload = async (files, zone) => {
 };
 
 window.calculateRankings=()=>{
-  const showAll=$('filter-all').checked,cands=[...state.items.values()].filter(i=>i.embedding&&(showAll||i.zone==='pool'));
-  if(!cands.length)throw new Error('No items to rank!');
-  const validGrps=state.groups.filter(g=>g.on&&[...state.items.values()].some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)&&i.embedding));
+  const showAll=$('filter-all').checked;
+  const allItems=[...state.items.values()].filter(i=>i.embedding);
+  const cands=allItems.filter(i=>showAll||i.zone==='pool');
+  if(!cands.length)throw new Error('No embedded items to rank!');
+
+  const validGrps=state.groups.filter(g=>g.on&&allItems.some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)));
   if(!validGrps.length)throw new Error('Add items to at least one enabled group');
 
-  const groupWeights = {};
-  const groupMeanPos = {};
+  const cVecs={}, rawGrp={};
+  validGrps.forEach(g=>{
+    let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
+    let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
+    if(g.swapped)[pos,neg]=[neg,pos];
+    cVecs[g.id]=calculateConceptVector(pos, neg);
+    rawGrp[g.id]=[];
+  });
 
-  validGrps.forEach(g => {
-    let pos=[...state.items.values()].filter(i=>i.zone===`pos-${g.id}`&&i.embedding);
-    let neg=[...state.items.values()].filter(i=>i.zone===`neg-${g.id}`&&i.embedding);
-    
-    if (g.outlierPenalty && pos.length > 0) {
-      const meanVec = new Float64Array(512);
-      pos.forEach(p => { for(let k=0; k<512; k++) meanVec[k] += p.embedding[k]; });
-      groupMeanPos[g.id] = norm(Array.from(meanVec));
+  allItems.forEach(item=>{
+    item._raw={};
+    validGrps.forEach(g=>{
+      const sc=dot(item.embedding, cVecs[g.id]);
+      item._raw[g.id]=sc;
+      rawGrp[g.id].push(sc);
+    });
+  });
+
+  const scales={}, offsets={};
+  validGrps.forEach(g=>{
+    let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
+    let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
+    if(g.swapped)[pos,neg]=[neg,pos];
+
+    const arr=rawGrp[g.id];
+    const poolMean = arr.reduce((a,b)=>a+b,0)/arr.length;
+
+    // Calculate exact midpoint offset between POS and NEG so 0.0 is exactly neutral
+    if (pos.length && neg.length) {
+      const cPos = centroid(pos);
+      const cNeg = centroid(neg);
+      const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
+      offsets[g.id] = dot(mid, cVecs[g.id]);
+    } else {
+      offsets[g.id] = poolMean; // Fallback to pool mean if only one pole
     }
 
-    const nP=pos.length, nN=neg.length, X=[], y=[], sw=[];
-    const wP = nP>0 ? 1/(2*nP) : 0, wN = nN>0 ? 1/(2*nN) : 0;
-    pos.forEach(p=>{X.push(p.embedding); y.push(1); sw.push(wP)});
-    neg.forEach(n=>{X.push(n.embedding); y.push(-1); sw.push(wN)});
-    if(!nP||!nN){ for(let i=0;i<sw.length;i++) sw[i]=1; }
-    groupWeights[g.id] = X.length ? ridge(X, y, sw) : new Array(512).fill(0);
-    g._nP = nP;
-    g._nN = nN;
+    // Standardize based on the variance of the overall pool
+    const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
+    const std = Math.max(Math.sqrt(variance), 0.0001);
+    scales[g.id] = 0.5/std;
   });
 
-  const getSc=(i,g)=>{let sc=dot(i.embedding,groupWeights[g.id]);return g.outlierPenalty&&groupMeanPos[g.id]?(sc+dot(i.embedding,groupMeanPos[g.id]))/2:sc};
-  
-  validGrps.forEach(g=>{
-    let a=cands.map(i=>getSc(i,g)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;
-    g._f=0.5/sd;
-    g._m = (!g._nP || !g._nN) ? m : 0;
-  });
-
+  const agg=$('agg-method').value;
   const results=cands.map(item=>{
-    const scores={},rawScores={};
+    const gScores={}; let arr=[];
     validGrps.forEach(g=>{
-      let sc=(getSc(item,g) - g._m)*g._f;
-      if(g.swapped) sc = -sc;
-      scores[g.id]=sc;rawScores[g.id]=sc;
+      const scaled=(item._raw[g.id] - offsets[g.id]) * scales[g.id];
+      gScores[g.id]=scaled; arr.push(scaled);
     });
-    return{...item,score:applyAgg(scores,state.aggMode),gScores:scores,rawScores};
+    let score=0;
+    if(agg==='avg')score=arr.reduce((a,b)=>a+b,0)/arr.length;
+    else if(agg==='max')score=Math.max(...arr);
+    else if(agg==='min')score=Math.min(...arr);
+    return{...item,score,rawScores:gScores};
   });
-  const aggLabels={linear:'mean(s)',sqrt:'mean(√s)',square:'max(score)'};
-  return{results:results.sort((a,b)=>b.score-a.score),meta:(validGrps.length>1?`Avg of ${validGrps.length} groups`:validGrps[0].name)+` · ${aggLabels[state.aggMode]}`};
+
+  const aggLabels={avg:'AVERAGE',max:'MAXIMUM',min:'MINIMUM'};
+  const metaStr=validGrps.length>1?`${aggLabels[agg]} of ${validGrps.length} groups`:validGrps[0].name;
+  return{results:results.sort((a,b)=>b.score-a.score), meta:metaStr};
 };
 
 function setupEvents(){
@@ -546,7 +580,7 @@ function render(data,meta,cfg={}){
   $(con).innerHTML=data.map((item,i)=>{
     const n=(item.score-min)/range,tt=tooltipFn(item);
     const lbl=item.type==='text'?item.content:(item.filename||'Image'),esc=lbl.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return`<div class="flex items-center gap-3 bg-gray-700/50 p-2 rounded-xl border border-gray-600"><div class="text-xl font-black text-gray-500 w-8 text-center">${i+1}</div>${item.type==='image'?`<img src="${item.content}" class="w-20 h-20 object-contain rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500 bg-gray-800/50" onclick="showPreview(${item.id},${isReg})" title="${esc}">`:`<div class="w-20 h-20 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>`}<div class="flex-1 min-w-0">${item.type==='text'?`<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1"><span class="truncate flex-1">${item.content}</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>`:`<div class="text-sm font-medium truncate mb-1" title="${esc}">${esc}</div>`}<div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>.3?'text-green-400':'text-yellow-400'}">${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div></div></div>`}).join('');
+    return`<div class="flex items-center gap-3 bg-gray-700/50 p-2 rounded-xl border border-gray-600"><div class="text-xl font-black text-gray-500 w-8 text-center">${i+1}</div>${item.type==='image'?`<img src="${item.content}" class="w-20 h-20 object-contain rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500 bg-gray-800/50" onclick="showPreview(${item.id},${isReg})" title="${esc}">`:`<div class="w-20 h-20 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>`}<div class="flex-1 min-w-0">${item.type==='text'?`<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1"><span class="truncate flex-1">${item.content}</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>`:`<div class="text-sm font-medium truncate mb-1" title="${esc}">${esc}</div>`}<div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>0?'text-green-400':'text-yellow-400'}">${item.score>0?'+':''}${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div></div></div>`}).join('');
   $(sec).scrollIntoView({behavior:'smooth'});
 }
 
@@ -617,8 +651,10 @@ window.regCalculate=()=>{
   const validConcepts=state.regConcepts.filter(c=>c.on&&c.items.length>=2&&c.items.every(id=>state.regItems.get(id)?.embedding));
   if(!validConcepts.length){alert('Need at least one enabled concept with ≥2 embedded items');return}
   const inConcept=new Set(state.regConcepts.flatMap(c=>c.items));
-  const allItems=[...state.regItems.values()].filter(i=>i.embedding&&(showAll||!inConcept.has(i.id)));
-  if(!allItems.length){alert('No embedded items to rank');return}
+
+  const allItems=[...state.regItems.values()].filter(i=>i.embedding);
+  const cands=allItems.filter(i=>(showAll||!inConcept.has(i.id)));
+  if(!cands.length){alert('No embedded items to rank');return}
 
   const conceptDirs=validConcepts.map(c=>{
     let cItems=c.items.map(id=>state.regItems.get(id)).filter(x=>x?.embedding);
@@ -630,16 +666,32 @@ window.regCalculate=()=>{
     return{concept:c,dir:norm(w)};
   });
   
-  conceptDirs.forEach(c=>{let a=allItems.map(i=>dot(i.embedding,c.dir)),m=a.reduce((s,v)=>s+v,0)/a.length,sd=Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length)||1;c._f=0.5/sd});
+  // Standardize the regression direction offsets over the entire item pool for accuracy
+  conceptDirs.forEach(c=>{
+    let a=allItems.map(i=>dot(i.embedding,c.dir));
+    let m=a.reduce((s,v)=>s+v,0)/a.length;
+    let std = Math.max(Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length), 0.0001);
+    c._m = m;
+    c._f = 0.5/std;
+  });
 
-  const results=allItems.map(item=>{
-    const scores={};
-    conceptDirs.forEach(({concept,dir,_f})=>{scores[concept.id]=dot(item.embedding,dir)*_f});
-    return{...item,score:applyAgg(scores,state.regAggMode),cScores:scores};
+  const agg=$('reg-agg-method').value;
+  const results=cands.map(item=>{
+    const cScores={}; let arr=[];
+    conceptDirs.forEach(({concept,dir,_m,_f})=>{
+        const scaled=(dot(item.embedding,dir) - _m) * _f;
+        cScores[concept.id]=scaled;
+        arr.push(scaled);
+    });
+    let score=0;
+    if(agg==='avg')score=arr.reduce((a,b)=>a+b,0)/arr.length;
+    else if(agg==='max')score=Math.max(...arr);
+    else if(agg==='min')score=Math.min(...arr);
+    return{...item,score,cScores};
   }).sort((a,b)=>b.score-a.score);
 
-  const aggLabels={linear:'mean(s)',sqrt:'mean(√s)',square:'max(score)'};
-  const meta=(validConcepts.length>1?`Avg of ${validConcepts.length} concepts`:validConcepts[0].name)+` · ${aggLabels[state.regAggMode]}`;
+  const aggLabels={avg:'AVERAGE',max:'MAXIMUM',min:'MINIMUM'};
+  const meta=(validConcepts.length>1?`${aggLabels[agg]} of ${validConcepts.length} concepts`:validConcepts[0].name);
   
   render(results,meta,{
     sec:'reg-results-section',con:'reg-results-content',met:'reg-result-meta',stKey:'regLastResults',

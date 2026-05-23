@@ -586,6 +586,14 @@ async function init(){
 
   renderGroups();updateCounts();renderProjects();
   $('loading-overlay').remove();setupEvents();
+  
+  // Expose core app interface to global window scope for console scripting and hackability
+  window.app = {
+    state,
+    computeEmbedding,
+    saveToDB,
+    loadFromDB
+  };
 }
 init();
 </script>

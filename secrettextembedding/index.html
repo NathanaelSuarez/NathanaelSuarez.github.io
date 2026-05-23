@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Text Concept Ranker (Snowflake Arctic)</title>
+<title>Text Concept Ranker (Jina v5 Nano)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <style>
@@ -39,8 +39,8 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex">
 <div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
-  <div class="spinner"></div><p id="loading-text" class="mt-4 text-lg font-bold">Initializing Snowflake Model...</p>
-  <p class="text-gray-400 text-sm mb-4">First load downloads ~300MB (Int8 Quantized)</p>
+  <div class="spinner"></div><p id="loading-text" class="mt-4 text-lg font-bold">Initializing Jina Embeddings Model...</p>
+  <p class="text-gray-400 text-sm mb-4">Loading high-precision matching engine</p>
   <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
 </div>
 
@@ -55,7 +55,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 <div class="flex-1 overflow-y-auto p-4">
 <div class="max-w-5xl mx-auto">
   <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Text Concept Ranker</h1>
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Text Concept Ranker (Jina v5 Nano)</h1>
     <div class="flex gap-2">
       <button id="share-btn" onclick="openShareModal()" class="text-xs bg-green-900/50 hover:bg-green-800 text-green-200 px-3 py-2 rounded-lg border border-green-700 transition">📤 Share</button>
       <button onclick="clearCurrentProject()" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-200 px-3 py-2 rounded-lg border border-red-700 transition">🗑️ Clear</button>
@@ -117,12 +117,12 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </div>
 
 <script type="module">
-import{pipeline,AutoTokenizer,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
+import{AutoModel,AutoTokenizer,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
 env.allowRemoteModels=true;env.allowLocalModels=false;
 
 const $=id=>document.getElementById(id);
-const state={nomic:{items:new Map(),nextId:0,models:{},groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1},lastResults:[]};
-const PREFIX='';
+const state={nomic:{items:new Map(),nextId:0,models:{},groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1},lastResults:[],webgpuActive:false};
+const PREFIX='Document: ';
 
 const PROJ_DB='TextRankerProjects';
 let currentProjId=null;
@@ -152,7 +152,7 @@ window.deleteProject=async(id)=>{
   tx.objectStore('appState').delete('state_'+id);
   
   if(id===currentProjId){
-    currentProjId=null; // Prevent saving the state of the deleted project over the new target
+    currentProjId=null;
     const nextId=meta.length?meta[0].id:null;
     if(nextId){
         switchProject(nextId);
@@ -187,7 +187,6 @@ async function saveToDB(){
   const db=await dbPromise,tx=db.transaction('appState','readwrite'),s=tx.objectStore('appState');
   s.put({id:'items_'+currentProjId,items:[...state.nomic.items.values()]});
   
-  // Sync the current project name into IndexedDB state so it can be recovered if localStorage wipes
   const meta = getProjMeta();
   const currentName = meta.find(p=>p.id===currentProjId)?.name || 'Recovered Project';
   
@@ -349,8 +348,17 @@ function updateCounts(){
 }
 
 async function computeEmbedding(text){
-  let output=await state.nomic.models.extractor(PREFIX+text,{pooling:'cls'});
-  output=output.normalize(2,-1);return Array.from(output.data);
+  const model=state.nomic.models.extractor;
+  const tokenizer=state.nomic.models.tokenizer;
+  const inputs=await tokenizer(PREFIX+text,{padding:true,truncation:true});
+  const outputs=await model(inputs);
+  let sentence_embedding=outputs.sentence_embedding;
+  if(!sentence_embedding){
+    const firstKey=Object.keys(outputs)[0];
+    sentence_embedding=outputs[firstKey];
+  }
+  sentence_embedding=sentence_embedding.normalize(2,-1);
+  return Array.from(sentence_embedding.data);
 }
 
 const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
@@ -406,8 +414,6 @@ function setupEvents(){
   $('nomic-calculate-btn').onclick=()=>{
     const col=state.nomic,showAll=$('nomic-filter-all').checked;
     
-    // Calculate standard deviations and offsets using ALL embedded items in the project
-    // to ensure the scale remains stable regardless of the UI filter
     const allItems=[...col.items.values()].filter(i=>i.embedding);
     const cands=allItems.filter(i=>showAll||i.zone==='pool');
     
@@ -424,7 +430,6 @@ function setupEvents(){
       rawGrp[g.id]=[];
     });
 
-    // Populate raw scores for ALL items so that variance is perfectly stable
     allItems.forEach(item=>{
       item._raw={};
       validGrps.forEach(g=>{
@@ -443,20 +448,16 @@ function setupEvents(){
       const arr=rawGrp[g.id];
       const poolMean = arr.reduce((a,b)=>a+b,0)/arr.length;
 
-      // Calculate exact midpoint offset between POS and NEG so 0.0 is exactly neutral
       if (pos.length && neg.length) {
         const cPos = centroid(pos);
         const cNeg = centroid(neg);
         const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
         offsets[g.id] = dot(mid, cVecs[g.id]);
       } else {
-        offsets[g.id] = poolMean; // Fallback to pool mean if only one pole
+        offsets[g.id] = poolMean;
       }
 
-      // Standardize based on the variance of the overall pool
       const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
-      
-      // Ensure standard deviation never gets impossibly small and blows up the scale
       const std = Math.max(Math.sqrt(variance), 0.0001);
       scales[g.id] = 0.5/std; 
     });
@@ -497,13 +498,46 @@ function render(data,meta){
 }
 
 async function init(){
-  const MODEL='Snowflake/snowflake-arctic-embed-m-v2.0';
+  const MODEL='jinaai/jina-embeddings-v5-text-nano-text-matching';
+  
+  let webgpuSupported = false;
+  let fp16Supported = false;
+  try {
+    if (navigator.gpu) {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) {
+        webgpuSupported = true;
+        fp16Supported = adapter.features.has("shader-f16");
+      }
+    }
+  } catch (e) {
+    console.error("WebGPU detection error:", e);
+  }
+  
+  state.webgpuActive = webgpuSupported && fp16Supported;
+
   updateProgress(10,"Loading tokenizer...");
   state.nomic.models.tokenizer=await AutoTokenizer.from_pretrained(MODEL);
-  updateProgress(50,"Loading Snowflake Arctic (Int8)...");
-  state.nomic.models.extractor=await pipeline('feature-extraction',MODEL,{dtype:'q8',progress_callback:p=>p.status==='progress'&&updateProgress(50+p.progress*.5)});
   
-  // --- SELF-HEALING RECOVERY LOGIC ---
+  if (state.webgpuActive) {
+    updateProgress(30,"Loading Jina v5 Nano (FP16)...");
+    state.nomic.models.extractor=await AutoModel.from_pretrained(MODEL, {
+      subfolder: 'onnx',
+      dtype: 'fp16',
+      device: 'webgpu',
+      use_external_data_format: true,
+      progress_callback: p=>p.status==='progress'&&updateProgress(30+p.progress*.6)
+    });
+  } else {
+    updateProgress(30,"Loading Jina v5 Nano (FP32)...");
+    state.nomic.models.extractor=await AutoModel.from_pretrained(MODEL, {
+      subfolder: 'onnx',
+      dtype: 'fp32',
+      use_external_data_format: true,
+      progress_callback: p=>p.status==='progress'&&updateProgress(30+p.progress*.6)
+    });
+  }
+  
   const db = await dbPromise;
   await new Promise(res => {
     const tx = db.transaction('appState', 'readonly'), s = tx.objectStore('appState');
@@ -537,6 +571,19 @@ async function init(){
   else currentProjId=meta[0].id;
   
   await loadFromDB();await loadFromURL();
+  
+  const JINA_DIM = 768;
+  let needsSave = false;
+  for(const[,item]of state.nomic.items){
+    if(!item.embedding || item.embedding.length !== JINA_DIM){
+      item.embedding=await computeEmbedding(item.content);
+      needsSave=true;
+    }
+  }
+  if(needsSave) {
+    await saveToDB();
+  }
+
   renderGroups();updateCounts();renderProjects();
   $('loading-overlay').remove();setupEvents();
 }

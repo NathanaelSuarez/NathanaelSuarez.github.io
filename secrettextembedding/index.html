@@ -3,7 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Text Concept Ranker (Jina v5 Nano)</title>
+<title>Text Concept Ranker (IBM Granite)</title>
+<script>
+// Silence specific annoying browser console warnings & library notices
+const originalWarn = console.warn;
+console.warn = function(...args) {
+  if (args[0] && typeof args[0] === 'string') {
+    if (args[0].includes('cdn.tailwindcss.com should not be used in production')) return;
+    if (args[0].includes('Unknown model class')) return;
+    if (args[0].includes('Unable to determine content-length')) return;
+  }
+  originalWarn.apply(console, args);
+};
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <style>
@@ -39,8 +51,8 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex">
 <div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
-  <div class="spinner"></div><p id="loading-text" class="mt-4 text-lg font-bold">Initializing Jina Embeddings Model...</p>
-  <p class="text-gray-400 text-sm mb-4">Loading high-precision matching engine</p>
+  <div class="spinner"></div><p id="loading-text" class="mt-4 text-lg font-bold">Initializing IBM Granite Model...</p>
+  <p class="text-gray-400 text-sm mb-4">First load downloads ~100MB (Int8 Quantized)</p>
   <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
 </div>
 
@@ -55,7 +67,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 <div class="flex-1 overflow-y-auto p-4">
 <div class="max-w-5xl mx-auto">
   <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Text Concept Ranker (Jina v5 Nano)</h1>
+    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Text Concept Ranker</h1>
     <div class="flex gap-2">
       <button id="share-btn" onclick="openShareModal()" class="text-xs bg-green-900/50 hover:bg-green-800 text-green-200 px-3 py-2 rounded-lg border border-green-700 transition">📤 Share</button>
       <button onclick="clearCurrentProject()" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-200 px-3 py-2 rounded-lg border border-red-700 transition">🗑️ Clear</button>
@@ -70,7 +82,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
           <div class="flex gap-2">
             <div class="flex-1">
               <textarea id="nomic-text-input" placeholder="Enter document text to rank..." class="w-full bg-gray-700 p-3 rounded-lg border border-gray-600 outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"></textarea>
-              <div id="nomic-token-info" class="text-[10px] font-bold text-gray-500 uppercase mt-1">Tokens: <span id="nomic-token-count">0</span> / 8192</div>
+              <div id="nomic-token-info" class="text-[10px] font-bold text-gray-500 uppercase mt-1">Tokens: <span id="nomic-token-count">0</span> / 32768</div>
             </div>
             <button id="nomic-add-btn" class="bg-purple-600 hover:bg-purple-700 h-fit py-3 px-6 rounded-lg font-medium self-start">Add</button>
           </div>
@@ -117,12 +129,12 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </div>
 
 <script type="module">
-import{AutoModel,AutoTokenizer,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
+import { pipeline, AutoTokenizer, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4';
 env.allowRemoteModels=true;env.allowLocalModels=false;
 
 const $=id=>document.getElementById(id);
-const state={nomic:{items:new Map(),nextId:0,models:{},groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1},lastResults:[],webgpuActive:false};
-const PREFIX='Document: ';
+const state={nomic:{items:new Map(),nextId:0,models:{},groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1},lastResults:[]};
+const PREFIX='';
 
 const PROJ_DB='TextRankerProjects';
 let currentProjId=null;
@@ -152,7 +164,7 @@ window.deleteProject=async(id)=>{
   tx.objectStore('appState').delete('state_'+id);
   
   if(id===currentProjId){
-    currentProjId=null;
+    currentProjId=null; 
     const nextId=meta.length?meta[0].id:null;
     if(nextId){
         switchProject(nextId);
@@ -348,17 +360,8 @@ function updateCounts(){
 }
 
 async function computeEmbedding(text){
-  const model=state.nomic.models.extractor;
-  const tokenizer=state.nomic.models.tokenizer;
-  const inputs=await tokenizer(PREFIX+text,{padding:true,truncation:true});
-  const outputs=await model(inputs);
-  let sentence_embedding=outputs.sentence_embedding;
-  if(!sentence_embedding){
-    const firstKey=Object.keys(outputs)[0];
-    sentence_embedding=outputs[firstKey];
-  }
-  sentence_embedding=sentence_embedding.normalize(2,-1);
-  return Array.from(sentence_embedding.data);
+  let output=await state.nomic.models.extractor(PREFIX+text,{pooling:'cls'});
+  output=output.normalize(2,-1);return Array.from(output.data);
 }
 
 const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
@@ -396,7 +399,22 @@ window.editItem=async(id)=>{
   const bg=document.createElement('div');bg.className='modal-bg';
   bg.innerHTML=`<div class="modal-box flex flex-col gap-2"><div class="flex justify-between font-bold"><span>Edit Item</span><span class="text-xs text-gray-400 font-normal">Ctrl+Enter to save</span></div><textarea class="flex-1 bg-gray-900 border border-gray-700 p-3 rounded-lg outline-none custom-scroll text-sm min-h-[200px]">${item.content}</textarea><div class="flex justify-end gap-2 mt-2"><button class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" onclick="this.closest('.modal-bg').remove()">Cancel</button><button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm" id="save-edit-btn">Save</button></div></div>`;
   const ta=bg.querySelector('textarea');
-  const save=async()=>{const v=ta.value.trim();bg.remove();if(v&&v!==item.content){item.content=v;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c){c.title=v;c.querySelector('span').textContent=v;c.classList.add('opacity-50')}item.embedding=await computeEmbedding(v);if(c)c.classList.remove('opacity-50');saveToDB();if(!$('results-section').classList.contains('hidden'))$('nomic-calculate-btn').click()}};
+  const save=async()=>{
+    const v=ta.value.trim();bg.remove();
+    if(v&&v!==item.content){
+      item.content=v;
+      const c=document.querySelector(`.item-card[data-id="${id}"]`);
+      if(c){
+        c.title=v;
+        c.querySelector('span').textContent=v;
+        c.classList.add('opacity-50')
+      }
+      item.embedding=await computeEmbedding(v);
+      if(c)c.classList.remove('opacity-50');
+      saveToDB();
+      // Manual rank calculation enforced: automatic rank calculation call is removed here.
+    }
+  };
   bg.querySelector('#save-edit-btn').onclick=save;
   ta.onkeydown=e=>{if(e.key==='Enter'&&e.ctrlKey)save();else if(e.key==='Escape')bg.remove()};
   bg.onclick=e=>{if(e.target===bg)bg.remove()};
@@ -406,7 +424,7 @@ window.editItem=async(id)=>{
 const updateProgress=(p,t)=>{$('progress-bar').style.width=p+'%';if(t)$('loading-text').textContent=t};
 
 function setupEvents(){
-  const countTokens=async()=>{const t=$('nomic-text-input').value;if(!t){$('nomic-token-count').textContent='0';$('nomic-token-count').style.color='';$('nomic-add-btn').disabled=false;return}const{input_ids}=await state.nomic.models.tokenizer(PREFIX+t);const c=input_ids.size;$('nomic-token-count').textContent=c;const over=c>8192;$('nomic-add-btn').disabled=over;$('nomic-token-count').style.color=over?'#EF4444':''};
+  const countTokens=async()=>{const t=$('nomic-text-input').value;if(!t){$('nomic-token-count').textContent='0';$('nomic-token-count').style.color='';$('nomic-add-btn').disabled=false;return}const{input_ids}=await state.nomic.models.tokenizer(PREFIX+t);const c=input_ids.size;$('nomic-token-count').textContent=c;const over=c>32768;$('nomic-add-btn').disabled=over;$('nomic-token-count').style.color=over?'#EF4444':''};
   $('nomic-text-input').oninput=countTokens;
   $('nomic-add-btn').onclick=async()=>{const v=$('nomic-text-input').value.trim();if(v&&!$('nomic-add-btn').disabled){await addItem(v);$('nomic-text-input').value='';countTokens()}};
   $('nomic-text-input').onkeydown=e=>{if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();$('nomic-add-btn').click()}};
@@ -454,7 +472,7 @@ function setupEvents(){
         const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
         offsets[g.id] = dot(mid, cVecs[g.id]);
       } else {
-        offsets[g.id] = poolMean;
+        offsets[g.id] = poolMean; 
       }
 
       const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
@@ -498,45 +516,16 @@ function render(data,meta){
 }
 
 async function init(){
-  const MODEL='jinaai/jina-embeddings-v5-text-nano-text-matching';
-  
-  let webgpuSupported = false;
-  let fp16Supported = false;
-  try {
-    if (navigator.gpu) {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (adapter) {
-        webgpuSupported = true;
-        fp16Supported = adapter.features.has("shader-f16");
-      }
-    }
-  } catch (e) {
-    console.error("WebGPU detection error:", e);
-  }
-  
-  state.webgpuActive = webgpuSupported && fp16Supported;
-
+  const MODEL='ibm-granite/granite-embedding-97m-multilingual-r2';
   updateProgress(10,"Loading tokenizer...");
   state.nomic.models.tokenizer=await AutoTokenizer.from_pretrained(MODEL);
+  updateProgress(50,"Loading IBM Granite R2 (Int8)...");
   
-  if (state.webgpuActive) {
-    updateProgress(30,"Loading Jina v5 Nano (FP16)...");
-    state.nomic.models.extractor=await AutoModel.from_pretrained(MODEL, {
-      subfolder: 'onnx',
-      dtype: 'fp16',
-      device: 'webgpu',
-      use_external_data_format: true,
-      progress_callback: p=>p.status==='progress'&&updateProgress(30+p.progress*.6)
-    });
-  } else {
-    updateProgress(30,"Loading Jina v5 Nano (FP32)...");
-    state.nomic.models.extractor=await AutoModel.from_pretrained(MODEL, {
-      subfolder: 'onnx',
-      dtype: 'fp32',
-      use_external_data_format: true,
-      progress_callback: p=>p.status==='progress'&&updateProgress(30+p.progress*.6)
-    });
-  }
+  state.nomic.models.extractor=await pipeline('feature-extraction',MODEL,{
+    model_file_name: 'model_quint8_avx2',
+    dtype: 'fp32',
+    progress_callback: p=>p.status==='progress'&&updateProgress(50+p.progress*.5)
+  });
   
   const db = await dbPromise;
   await new Promise(res => {
@@ -571,29 +560,37 @@ async function init(){
   else currentProjId=meta[0].id;
   
   await loadFromDB();await loadFromURL();
-  
-  const JINA_DIM = 768;
-  let needsSave = false;
-  for(const[,item]of state.nomic.items){
-    if(!item.embedding || item.embedding.length !== JINA_DIM){
-      item.embedding=await computeEmbedding(item.content);
-      needsSave=true;
-    }
-  }
-  if(needsSave) {
-    await saveToDB();
-  }
-
   renderGroups();updateCounts();renderProjects();
   $('loading-overlay').remove();setupEvents();
-  
-  // Expose core app interface to global window scope for console scripting and hackability
-  window.app = {
+
+  // Programmatic API exposure for direct browser execution/hacking
+  window.graniteRanker = {
     state,
+    $: id => document.getElementById(id),
     computeEmbedding,
+    addItem,
+    removeItem,
+    editItem,
+    calculate: () => $('nomic-calculate-btn').click(),
     saveToDB,
-    loadFromDB
+    loadFromDB,
+    renderProjects,
+    newProject,
+    deleteProject,
+    switchProject,
+    renderGroups,
+    addGrp,
+    delGrp,
+    togGrp,
+    swapGrp,
   };
+  console.log("%cGranite Ranker Ready! %c\nYou can access and edit app variables or execute features using the global console API: %cgraniteRanker%c\nInspect the main state by calling: %cgraniteRanker.state", 
+    "color: #3b82f6; font-weight: bold; font-size: 14px;", 
+    "color: inherit;", 
+    "color: #a855f7; font-weight: bold; font-family: monospace;", 
+    "color: inherit;", 
+    "color: #10b981; font-family: monospace;"
+  );
 }
 init();
 </script>

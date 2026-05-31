@@ -322,7 +322,6 @@ function makeCard(item){
   c.ondragstart=e=>e.dataTransfer.setData('id',item.id);return c;
 }
 
-// FIX: Radically upgraded renderGroups to move existing cards instead of recreating them, preventing duplicates completely.
 function renderGroups() {
   const existingCards = new Map();
   document.querySelectorAll('.item-card').forEach(c => existingCards.set(Number(c.dataset.id), c));
@@ -352,7 +351,13 @@ function renderGroups() {
 
 window.renameGrp=(id,el)=>{const g=state.groups.find(x=>x.id===id);if(!g)return;const input=document.createElement('input');input.type='text';input.value=g.name;input.className='bg-gray-700 px-1 rounded text-sm w-24';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){g.name=input.value.trim()||g.name;renderGroups();debouncedSave()}else if(e.key==='Escape')renderGroups()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
 window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false});renderGroups();debouncedSave()};
-window.delGrp=id=>{if(state.groups.length<2)return;[...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';});renderGroups();debouncedSave()};
+window.delGrp=id=>{
+  if(state.groups.length<2)return;
+  [...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';});
+  state.groups=state.groups.filter(g=>g.id!==id); // <--- Fixed: Properly removes concept from state
+  renderGroups();
+  debouncedSave();
+};
 window.togGrp=(id,v)=>{state.groups.find(g=>g.id===id).on=v;renderGroups();debouncedSave()};
 window.togColl=id=>{state.groups.find(x=>x.id===id).open^=1;renderGroups()};
 window.swapGrp=id=>{state.groups.find(g=>g.id===id).swapped^=1;renderGroups();debouncedSave()};

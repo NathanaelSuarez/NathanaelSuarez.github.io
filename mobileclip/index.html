@@ -31,11 +31,10 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 .embed-progress{font-size:10px;color:#60A5FA;padding:2px 8px;background:#1E3A5F;border-radius:4px;display:none;align-items:center;gap:4px}
 .embed-progress.active{display:inline-flex}
 
-/* Responsive CSS Grid with dynamic limits for largest possible size */
 #tm-train-container {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  align-content: start; /* Prevents rows from stretching vertically */
+  align-content: start;
   gap: 12px;
   width: 100%;
 }
@@ -46,7 +45,6 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   }
 }
 
-/* Dynamically sizing squares with no aspect crop */
 .train-item{width:100%;aspect-ratio:1/1;cursor:grab;transition:.2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;position:relative;background:#0f172a;border-radius:8px;border:1px solid #4b5563;flex-shrink:0;box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1),0 2px 4px -2px rgb(0 0 0 / 0.1)}
 .train-item:hover{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.5);transform:scale(1.02)}
 .train-item img{width:100%;height:100%;object-fit:contain;pointer-events:none;border-radius:6px}
@@ -134,11 +132,9 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   </footer>
 </div>
 
-<!-- Active Learning Training Modal -->
 <div id="tm-modal" class="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm hidden">
   <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 max-w-4xl w-full max-h-[95vh] flex flex-col gap-4 mx-auto shadow-2xl overflow-hidden">
     
-    <!-- Modal Header (Pinned top) -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-baseline border-b border-gray-700 pb-3 gap-2 flex-shrink-0">
       <div>
         <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent" id="tm-modal-title">Train Concept</h2>
@@ -159,10 +155,8 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
       <span id="tm-train-stats" class="text-xs bg-gray-900 px-3 py-1 rounded text-gray-500 font-mono border border-gray-700">Pairs Learned: 0</span>
     </div>
 
-    <!-- Interactive Grid Area (Fills space, scrolls internally if items are too large) -->
     <div id="tm-train-container" class="flex-1 overflow-y-auto p-4 min-h-[160px] bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-700 relative custom-scroll"></div>
 
-    <!-- Action Buttons (Pinned bottom) -->
     <div class="flex flex-wrap justify-between items-center gap-3 flex-shrink-0">
       <button id="tm-close-btn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition" onclick="closeTrainingModal()">Close</button>
       <div class="flex flex-wrap gap-3">
@@ -172,7 +166,6 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
       </div>
     </div>
 
-    <!-- Recommendations Area (Appears on click) -->
     <div id="tm-recomm-area" class="border-t border-gray-700 pt-4 hidden flex-shrink-0 justify-center overflow-y-auto max-h-[35vh] custom-scroll"></div>
   </div>
 </div>
@@ -181,7 +174,6 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 import{AutoProcessor,AutoTokenizer,CLIPTextModelWithProjection,CLIPVisionModelWithProjection,RawImage,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
 env.allowRemoteModels=true;env.allowLocalModels=false;
 
-// Stop double click selecting text (but allow manual drag selection)
 document.addEventListener('mousedown',e=>{if(e.detail>1&&!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))e.preventDefault()});
 
 const $=id=>document.getElementById(id);
@@ -330,7 +322,11 @@ function makeCard(item){
   c.ondragstart=e=>e.dataTransfer.setData('id',item.id);return c;
 }
 
-function renderGroups(){
+// FIX: Radically upgraded renderGroups to move existing cards instead of recreating them, preventing duplicates completely.
+function renderGroups() {
+  const existingCards = new Map();
+  document.querySelectorAll('.item-card').forEach(c => existingCards.set(Number(c.dataset.id), c));
+
   const frag=document.createDocumentFragment();
   state.groups.forEach(g=>{
     const div=document.createElement('div');div.className=`bg-gray-800 rounded-xl border border-gray-700${g.on?'':' opacity-50'}`;
@@ -339,22 +335,33 @@ function renderGroups(){
     frag.appendChild(div);
   });
   if(state.groups.length<10){const btn=document.createElement('button');btn.className='w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';btn.textContent=`+ Add Concept Group (${state.groups.length}/10)`;btn.onclick=addGrp;frag.appendChild(btn)}
-  $('concept-groups').innerHTML='';$('concept-groups').appendChild(frag);
-  [...state.items.values()].filter(i=>i.zone!=='pool').forEach(item=>{const z=document.querySelector(`[data-zone="${item.zone}"]`);if(z)z.appendChild(makeCard(item));else{item.zone='pool';$('items-pool').appendChild(makeCard(item))}});
+  
+  $('concept-groups').innerHTML='';
+  $('concept-groups').appendChild(frag);
+
+  [...state.items.values()].forEach(item=>{
+    let z = document.querySelector(`[data-zone="${item.zone}"]`);
+    if (!z) { item.zone = 'pool'; z = $('items-pool'); }
+    const card = existingCards.get(item.id) || makeCard(item);
+    if (card.parentElement !== z) z.appendChild(card);
+  });
+
   document.querySelectorAll('.drop-zone').forEach(z=>{z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};z.ondragleave=z.ondrop=e=>{z.classList.remove('drag-over');if(e.type==='drop'){e.preventDefault();const id=+e.dataTransfer.getData('id');if(!isNaN(id)&&state.items.has(id)){state.items.get(id).zone=z.dataset.zone;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c)z.appendChild(c);debouncedSave()}}}});
   state.groups.forEach(g=>{const p=$(`pf${g.id}`),n=$(`nf${g.id}`);if(p)p.onchange=e=>upload(e.target.files,`pos-${g.id}`);if(n)n.onchange=e=>upload(e.target.files,`neg-${g.id}`)});
 }
 
 window.renameGrp=(id,el)=>{const g=state.groups.find(x=>x.id===id);if(!g)return;const input=document.createElement('input');input.type='text';input.value=g.name;input.className='bg-gray-700 px-1 rounded text-sm w-24';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){g.name=input.value.trim()||g.name;renderGroups();debouncedSave()}else if(e.key==='Escape')renderGroups()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
 window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false});renderGroups();debouncedSave()};
-window.delGrp=id=>{if(state.groups.length<2)return;[...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';const c=document.querySelector(`.item-card[data-id="${i.id}"]`);if(c)$('items-pool').appendChild(c)});state.groups=state.groups.filter(g=>g.id!==id);renderGroups();debouncedSave()};
+window.delGrp=id=>{if(state.groups.length<2)return;[...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';});renderGroups();debouncedSave()};
 window.togGrp=(id,v)=>{state.groups.find(g=>g.id===id).on=v;renderGroups();debouncedSave()};
 window.togColl=id=>{state.groups.find(x=>x.id===id).open^=1;renderGroups()};
 window.swapGrp=id=>{state.groups.find(g=>g.id===id).swapped^=1;renderGroups();debouncedSave()};
 
 async function compressImage(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),MAX=512;let w=img.width,h=img.height;if(w>h){if(w>MAX){h*=MAX/w;w=MAX}}else if(h>MAX){w*=MAX/h;h=MAX}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.8))};img.src=dataUrl})}
 
-function createCardElement(item){(item.zone==='pool'?$('items-pool'):document.querySelector(`[data-zone="${item.zone}"]`)||$('items-pool')).appendChild(makeCard(item))}
+function createCardElement(item){
+  (item.zone==='pool'?$('items-pool'):document.querySelector(`[data-zone="${item.zone}"]`)||$('items-pool')).appendChild(makeCard(item))
+}
 function updateCounts(){$('item-count').textContent=state.items.size+' items';document.querySelectorAll('.pool-placeholder').forEach(p=>p.style.display=state.items.size?'none':'block')}
 
 async function init(){
@@ -428,7 +435,7 @@ async function addItem(type,content,zone='pool',origFile=null,filename=null){
 }
 
 window.addItem=addItem;
-window.removeItem=id=>{const item=state.items.get(id);if(!item)return;const card=document.querySelector(`.item-card[data-id="${id}"]`);if(item.zone!=='pool'){item.zone='pool';$('items-pool').appendChild(card)}else{state.items.delete(id);state.origFiles.delete(id);card.remove()}updateCounts();debouncedSave()};
+window.removeItem=id=>{const item=state.items.get(id);if(!item)return;const card=document.querySelector(`.item-card[data-id="${id}"]`);if(item.zone!=='pool'){item.zone='pool';$('items-pool').appendChild(card)}else{state.items.delete(id);state.origFiles.delete(id);if(card)card.remove()}updateCounts();debouncedSave()};
 
 const upload = async (files, zone) => {
   for (const f of files) {
@@ -871,7 +878,12 @@ window.applySmartAction = (btnElement, groupId, itemId, action) => {
     else if (action.startsWith('rm-')) item.zone = 'pool';
 
     const grp = state.groups.find(g => g.id === groupId);
-    if (grp) window.togGrp(groupId, grp.on);
+    if (grp && !grp.on) {
+      grp.on = true;
+    }
+
+    renderGroups();
+    debouncedSave();
 
     const calcBtn = $('calculate-btn');
     if (calcBtn) calcBtn.click();

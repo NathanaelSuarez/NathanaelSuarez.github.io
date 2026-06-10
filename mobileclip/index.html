@@ -529,7 +529,10 @@ function render(data,meta,cfg={}){
 // === Active Learning Selection Implementation ===
 const trainState = {
   currentGroupId: null,
-  userConstraints: [], // Holds difference vectors scaled by the batch weight
+  sumChosen: new Array(512).fill(0),
+  countChosen: 0,
+  sumNotChosen: new Array(512).fill(0),
+  countNotChosen: 0,
   imagesLearned: 0,
   batchSize: 10
 };
@@ -537,7 +540,10 @@ const trainState = {
 window.openTrainingModal = (groupId) => {
   if (trainState.currentGroupId !== groupId) {
     trainState.currentGroupId = groupId;
-    trainState.userConstraints = [];
+    trainState.sumChosen = new Array(512).fill(0);
+    trainState.countChosen = 0;
+    trainState.sumNotChosen = new Array(512).fill(0);
+    trainState.countNotChosen = 0;
     trainState.imagesLearned = 0;
   }
 
@@ -584,10 +590,8 @@ window.renderBatch = () => {
     return;
   }
 
-  // Draw a truly random sample from the pool (with copy to avoid state mutation)
   let candidates = [...pool];
 
-  // Cryptographically secure Fisher-Yates shuffle utilizing the Web Crypto API
   for (let i = candidates.length - 1; i > 0; i--) {
     const randomInt = new Uint32Array(1);
     window.crypto.getRandomValues(randomInt);
@@ -595,7 +599,6 @@ window.renderBatch = () => {
     [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
 
-  // Take the batch size
   let batch = candidates.slice(0, batchSize);
 
   let apiScores = new Map();
@@ -611,7 +614,6 @@ window.renderBatch = () => {
     }
   } catch (e) {}
 
-  // Sort the current batch internally by similarity to keep it visually intuitive
   batch.sort((a, b) => (apiScores.get(b.id) || 0) - (apiScores.get(a.id) || 0));
 
   container.innerHTML = '';
@@ -655,15 +657,22 @@ function recordUserSelection() {
     }
   });
 
-  if (chosen.length > 0 && notChosen.length > 0) {
-    const cChosen = centroid(chosen);
-    const cNotChosen = centroid(notChosen);
-    const totalImagesInBatch = chosen.length + notChosen.length;
+  const totalImagesInBatch = chosen.length + notChosen.length;
+  if (totalImagesInBatch > 0) {
+    chosen.forEach(item => {
+      for (let i = 0; i < 512; i++) {
+        trainState.sumChosen[i] += item.embedding[i];
+      }
+      trainState.countChosen++;
+    });
 
-    // Weight the preference direction vector by the number of elements in the batch
-    const diff = cChosen.map((val, idx) => (val - cNotChosen[idx]) * totalImagesInBatch);
-    trainState.userConstraints.push(diff);
-    
+    notChosen.forEach(item => {
+      for (let i = 0; i < 512; i++) {
+        trainState.sumNotChosen[i] += item.embedding[i];
+      }
+      trainState.countNotChosen++;
+    });
+
     trainState.imagesLearned += totalImagesInBatch;
     $('tm-train-stats').innerText = `Images Learned: ${trainState.imagesLearned}`;
   }
@@ -673,17 +682,28 @@ window.calculateOptimalAction = () => {
   const gid = trainState.currentGroupId;
   const rArea = $('tm-recomm-area');
 
-  if (trainState.userConstraints.length === 0) {
+  if (trainState.imagesLearned === 0) {
     rArea.innerHTML = `<div class="text-yellow-400 text-sm font-bold bg-yellow-900/30 px-4 py-2 rounded-lg text-center w-full">Please select some images and click 'Save Selection & Next Batch' first.</div>`;
     rArea.classList.remove('hidden');
     return;
   }
 
-  let sum = new Array(512).fill(0);
-  trainState.userConstraints.forEach(v => {
-    for (let i = 0; i < 512; i++) sum[i] += v[i];
-  });
-  let w_user = norm(sum);
+  let w_user;
+  if (trainState.countChosen === 0) {
+    const cNotChosen = trainState.sumNotChosen.map(v => v / trainState.countNotChosen);
+    w_user = norm(cNotChosen.map(x => -x));
+  } else if (trainState.countNotChosen === 0) {
+    const cChosen = trainState.sumChosen.map(v => v / trainState.countChosen);
+    w_user = norm(cChosen);
+  } else {
+    const cChosen = trainState.sumChosen.map(v => v / trainState.countChosen);
+    const cNotChosen = trainState.sumNotChosen.map(v => v / trainState.countNotChosen);
+    const diff = new Array(512);
+    for (let i = 0; i < 512; i++) {
+      diff[i] = cChosen[i] - cNotChosen[i];
+    }
+    w_user = norm(diff);
+  }
 
   const allItems = [...state.items.values()];
   const poolItems = allItems.filter(i => i.zone === 'pool' && i.embedding && i.type === 'image');

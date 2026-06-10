@@ -45,9 +45,13 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   }
 }
 
-.train-item{width:100%;aspect-ratio:1/1;cursor:grab;transition:.2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;position:relative;background:#0f172a;border-radius:8px;border:1px solid #4b5563;flex-shrink:0;box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1),0 2px 4px -2px rgb(0 0 0 / 0.1)}
+.train-item{width:100%;aspect-ratio:1/1;cursor:pointer;transition:.2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;position:relative;background:#0f172a;border-radius:8px;border:1px solid #4b5563;flex-shrink:0;box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1),0 2px 4px -2px rgb(0 0 0 / 0.1)}
 .train-item:hover{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.5);transform:scale(1.02)}
 .train-item img{width:100%;height:100%;object-fit:contain;pointer-events:none;border-radius:6px}
+
+.train-item.selected{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,0.5);transform:scale(0.98)}
+.train-item.selected img{filter:brightness(0.9)}
+.train-item.selected::after{content:'✓';position:absolute;top:6px;right:6px;width:22px;height:22px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:white;font-weight:bold;z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
 </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4">
@@ -138,21 +142,14 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
     <div class="flex flex-col md:flex-row justify-between items-start md:items-baseline border-b border-gray-700 pb-3 gap-2 flex-shrink-0">
       <div>
         <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent" id="tm-modal-title">Train Concept</h2>
-        <p class="text-sm text-gray-400 mt-1">Batch is <b>pre-sorted</b> by similarity. Drag to correct the order: <br><span class="text-green-400 font-bold">BEST (Left)</span> ➔ <span class="text-red-400 font-bold">WORST (Right)</span>.</p>
+        <p class="text-sm text-gray-400 mt-1">Select the images that fit your concept. Unselected images will be treated as negative examples.</p>
 
         <div class="flex items-center gap-2 mt-2">
-          <span class="text-xs text-gray-500 font-bold uppercase">Batch Size:</span>
-          <div class="flex gap-1" id="tm-batch-size-selector">
-            <button class="px-2 py-0.5 text-xs bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition" data-size="5">5</button>
-            <button class="px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition" data-size="6">6</button>
-            <button class="px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition" data-size="7">7</button>
-            <button class="px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition" data-size="8">8</button>
-            <button class="px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition" data-size="9">9</button>
-            <button class="px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition" data-size="10">10</button>
-          </div>
+          <span class="text-xs text-gray-400 font-bold uppercase">Batch Size (1-100):</span>
+          <input type="number" id="tm-batch-size" min="1" max="100" value="10" class="bg-gray-700 text-white rounded px-2 py-1 text-xs w-16 border border-gray-600 outline-none focus:ring-1 focus:ring-purple-500 font-bold text-center">
         </div>
       </div>
-      <span id="tm-train-stats" class="text-xs bg-gray-900 px-3 py-1 rounded text-gray-500 font-mono border border-gray-700">Pairs Learned: 0</span>
+      <span id="tm-train-stats" class="text-xs bg-gray-900 px-3 py-1 rounded text-gray-500 font-mono border border-gray-700">Images Learned: 0</span>
     </div>
 
     <div id="tm-train-container" class="flex-1 overflow-y-auto p-4 min-h-[160px] bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-700 relative custom-scroll"></div>
@@ -162,7 +159,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
       <div class="flex flex-wrap gap-3">
         <button id="tm-skip-btn" class="px-4 py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 border border-yellow-700 rounded-lg text-sm font-bold transition" onclick="renderBatch()">Skip Batch ⏭️</button>
         <button id="tm-recomm-btn" class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-lg transition flex items-center gap-2" onclick="calculateOptimalAction()">✨ Calc Maximum Improvement</button>
-        <button id="tm-next-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-lg transition" onclick="onNextBatchClick()">Save Order & Next Batch ➔</button>
+        <button id="tm-next-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-lg transition" onclick="onNextBatchClick()">Save Selection & Next Batch ➔</button>
       </div>
     </div>
 
@@ -354,7 +351,7 @@ window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map
 window.delGrp=id=>{
   if(state.groups.length<2)return;
   [...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';});
-  state.groups=state.groups.filter(g=>g.id!==id); // <--- Fixed: Properly removes concept from state
+  state.groups=state.groups.filter(g=>g.id!==id);
   renderGroups();
   debouncedSave();
 };
@@ -376,7 +373,6 @@ async function init(){
   updateProgress(40,"Loading Vision Model...");state.models.vision=await CLIPVisionModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(40+p.progress*.3)});
   updateProgress(70,"Loading Text Model...");state.models.text=await CLIPTextModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(70+p.progress*.3)});
   await loadFromDB();updateCounts();$('loading-overlay').remove();setupEvents();
-  initTrainingDragAndDrop();
 }
 
 // ===== Math Core Functions =====
@@ -392,42 +388,6 @@ function calculateConceptVector(pos, neg) {
   const cPos = centroid(pos);
   const cNeg = centroid(neg);
   return norm(cPos.map((val, i) => val - cNeg[i]));
-}
-
-function ridge(X, y, sampleWeights=null) {
-  const N = X.length; if(!N) return [];
-  const D = X[0].length;
-  const lambda = 0.1 + (2.0 / N);
-  const sw = sampleWeights || new Array(N).fill(1);
-  const XtWX = Array.from({length:D}, ()=>new Float64Array(D));
-  const XtWy = new Float64Array(D);
-  for(let i=0; i<N; i++) {
-    const xi=X[i], wi=sw[i], wyi=wi*y[i];
-    for(let j=0; j<D; j++) {
-      XtWy[j] += xi[j]*wyi;
-      const wxj = wi*xi[j];
-      for(let k=j; k<D; k++) { const v=wxj*xi[k]; XtWX[j][k]+=v; if(k!==j) XtWX[k][j]+=v; }
-    }
-  }
-  for(let j=0; j<D; j++) XtWX[j][j] += lambda;
-  const I = Array.from({length:D}, (_,i)=>{ const r=new Float64Array(D); r[i]=1; return r; });
-  for(let i=0; i<D; i++) {
-    let maxRow=i, maxEl=Math.abs(XtWX[i][i]);
-    for(let k=i+1; k<D; k++) if(Math.abs(XtWX[k][i])>maxEl) { maxEl=Math.abs(XtWX[k][i]); maxRow=k; }
-    [XtWX[i], XtWX[maxRow]] =[XtWX[maxRow], XtWX[i]];
-    [I[i], I[maxRow]] =[I[maxRow], I[i]];
-    const f = XtWX[i][i];
-    if(Math.abs(f) < 1e-12) continue;
-    for(let j=0; j<D; j++) { XtWX[i][j]/=f; I[i][j]/=f; }
-    for(let k=0; k<D; k++) {
-      if(k===i) continue;
-      const f2 = XtWX[k][i];
-      for(let j=0; j<D; j++) { XtWX[k][j]-=f2*XtWX[i][j]; I[k][j]-=f2*I[i][j]; }
-    }
-  }
-  const w = new Float64Array(D);
-  for(let i=0; i<D; i++) for(let j=0; j<D; j++) w[i] += I[i][j]*XtWy[j];
-  return Array.from(w);
 }
 
 async function addItem(type,content,zone='pool',origFile=null,filename=null){
@@ -566,24 +526,24 @@ function render(data,meta,cfg={}){
   $(sec).scrollIntoView({behavior:'smooth'});
 }
 
-// === Active Learning Implementation ===
+// === Active Learning Selection Implementation ===
 const trainState = {
   currentGroupId: null,
-  seenItems: new Set(),
-  userConstraints: [],
-  batchSize: 5
+  userConstraints: [], // Holds difference vectors scaled by the batch weight
+  imagesLearned: 0,
+  batchSize: 10
 };
 
 window.openTrainingModal = (groupId) => {
   if (trainState.currentGroupId !== groupId) {
     trainState.currentGroupId = groupId;
-    trainState.seenItems.clear();
     trainState.userConstraints = [];
+    trainState.imagesLearned = 0;
   }
 
   const grp = state.groups.find(g => g.id === groupId);
   $('tm-modal-title').innerText = `Train: ${grp.name}`;
-  $('tm-train-stats').innerText = `Pairs Learned: ${trainState.userConstraints.length}`;
+  $('tm-train-stats').innerText = `Images Learned: ${trainState.imagesLearned}`;
   $('tm-recomm-area').classList.add('hidden');
   $('tm-modal').classList.remove('hidden');
 
@@ -596,13 +556,16 @@ window.closeTrainingModal = () => {
 };
 
 function setupBatchSizeSelector() {
-  const selector = $('tm-batch-size-selector');
-  if (!selector.dataset.bound) {
-    selector.dataset.bound = "true";
-    selector.onclick = (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      trainState.batchSize = parseInt(btn.dataset.size);
+  const input = $('tm-batch-size');
+  if (input && !input.dataset.bound) {
+    input.dataset.bound = "true";
+    input.value = trainState.batchSize || 10;
+    input.onchange = (e) => {
+      let val = parseInt(e.target.value);
+      if (isNaN(val) || val < 1) val = 1;
+      if (val > 100) val = 100;
+      e.target.value = val;
+      trainState.batchSize = val;
       renderBatch();
     };
   }
@@ -611,41 +574,29 @@ function setupBatchSizeSelector() {
 window.renderBatch = () => {
   const container = $('tm-train-container');
   const gid = trainState.currentGroupId;
-  const batchSize = trainState.batchSize || 5;
+  const batchSize = trainState.batchSize || 10;
   $('tm-recomm-area').classList.add('hidden');
-
-  const selector = $('tm-batch-size-selector');
-  if (selector) {
-    selector.querySelectorAll('button').forEach(b => {
-      const sz = parseInt(b.dataset.size);
-      if (sz === batchSize) {
-        b.className = 'px-2 py-0.5 text-xs bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition';
-      } else {
-        b.className = 'px-2 py-0.5 text-xs bg-gray-700 text-white rounded font-bold hover:bg-gray-600 transition';
-      }
-    });
-  }
 
   let pool = [...state.items.values()].filter(i => i.zone === 'pool' && i.embedding && i.type === 'image');
 
-  if (pool.length < batchSize) {
-    container.innerHTML = `<div class="col-span-full text-gray-500 w-full text-center py-8 font-medium flex items-center justify-center h-full min-h-[100px]">Please upload more images to the pool first (requires ${batchSize}+ available items).</div>`;
+  if (pool.length === 0) {
+    container.innerHTML = `<div class="col-span-full text-gray-500 w-full text-center py-8 font-medium flex items-center justify-center h-full min-h-[100px]">Please upload more images to the pool first.</div>`;
     return;
   }
 
-  let unseen = pool.filter(i => !trainState.seenItems.has(i.id));
-  if (unseen.length < batchSize) {
-    trainState.seenItems.clear();
-    unseen = pool;
+  // Draw a truly random sample from the pool (with copy to avoid state mutation)
+  let candidates = [...pool];
+
+  // Cryptographically secure Fisher-Yates shuffle utilizing the Web Crypto API
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const randomInt = new Uint32Array(1);
+    window.crypto.getRandomValues(randomInt);
+    const j = randomInt[0] % (i + 1);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
 
-  for (let i = unseen.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [unseen[i], unseen[j]] = [unseen[j], unseen[i]];
-  }
-
-  let batch = unseen.slice(0, batchSize);
-  batch.forEach(i => trainState.seenItems.add(i.id));
+  // Take the batch size
+  let batch = candidates.slice(0, batchSize);
 
   let apiScores = new Map();
   try {
@@ -660,14 +611,17 @@ window.renderBatch = () => {
     }
   } catch (e) {}
 
+  // Sort the current batch internally by similarity to keep it visually intuitive
   batch.sort((a, b) => (apiScores.get(b.id) || 0) - (apiScores.get(a.id) || 0));
 
   container.innerHTML = '';
   batch.forEach((item, index) => {
     const div = document.createElement('div');
     div.className = 'train-item';
-    div.draggable = true;
     div.dataset.id = item.id;
+    div.onclick = () => {
+      div.classList.toggle('selected');
+    };
 
     div.innerHTML = `
       <div class="absolute top-1 left-1 bg-black/80 text-[10px] px-1.5 py-0.5 rounded text-gray-300 pointer-events-none z-10 shadow flex items-center gap-1">#${index+1}</div>
@@ -678,26 +632,40 @@ window.renderBatch = () => {
 };
 
 window.onNextBatchClick = () => {
-  recordUserSort();
+  recordUserSelection();
   renderBatch();
 };
 
-function recordUserSort() {
+function recordUserSelection() {
   const container = $('tm-train-container');
-  const items = [...container.querySelectorAll('.train-item')].map(el => parseInt(el.dataset.id));
-
-  if (items.length > 1) {
-    for (let i = 0; i < items.length; i++) {
-      for (let j = i + 1; j < items.length; j++) {
-        const itemI = state.items.get(items[i]);
-        const itemJ = state.items.get(items[j]);
-        if (itemI && itemJ && itemI.embedding && itemJ.embedding) {
-          const diff = itemI.embedding.map((val, idx) => val - itemJ.embedding[idx]);
-          trainState.userConstraints.push(diff);
-        }
+  const items = [...container.querySelectorAll('.train-item')];
+  
+  const chosen = [];
+  const notChosen = [];
+  
+  items.forEach(el => {
+    const id = parseInt(el.dataset.id);
+    const item = state.items.get(id);
+    if (item && item.embedding) {
+      if (el.classList.contains('selected')) {
+        chosen.push(item);
+      } else {
+        notChosen.push(item);
       }
     }
-    $('tm-train-stats').innerText = `Pairs Learned: ${trainState.userConstraints.length}`;
+  });
+
+  if (chosen.length > 0 && notChosen.length > 0) {
+    const cChosen = centroid(chosen);
+    const cNotChosen = centroid(notChosen);
+    const totalImagesInBatch = chosen.length + notChosen.length;
+
+    // Weight the preference direction vector by the number of elements in the batch
+    const diff = cChosen.map((val, idx) => (val - cNotChosen[idx]) * totalImagesInBatch);
+    trainState.userConstraints.push(diff);
+    
+    trainState.imagesLearned += totalImagesInBatch;
+    $('tm-train-stats').innerText = `Images Learned: ${trainState.imagesLearned}`;
   }
 }
 
@@ -706,10 +674,16 @@ window.calculateOptimalAction = () => {
   const rArea = $('tm-recomm-area');
 
   if (trainState.userConstraints.length === 0) {
-    rArea.innerHTML = `<div class="text-yellow-400 text-sm font-bold bg-yellow-900/30 px-4 py-2 rounded-lg">Please order at least one batch and click 'Save Order & Next Batch' first.</div>`;
+    rArea.innerHTML = `<div class="text-yellow-400 text-sm font-bold bg-yellow-900/30 px-4 py-2 rounded-lg text-center w-full">Please select some images and click 'Save Selection & Next Batch' first.</div>`;
     rArea.classList.remove('hidden');
     return;
   }
+
+  let sum = new Array(512).fill(0);
+  trainState.userConstraints.forEach(v => {
+    for (let i = 0; i < 512; i++) sum[i] += v[i];
+  });
+  let w_user = norm(sum);
 
   const allItems = [...state.items.values()];
   const poolItems = allItems.filter(i => i.zone === 'pool' && i.embedding && i.type === 'image');
@@ -783,9 +757,6 @@ window.calculateOptimalAction = () => {
     return diff;
   }
 
-  let Y_user = new Array(trainState.userConstraints.length).fill(1);
-  let w_user = norm(ridge(trainState.userConstraints, Y_user));
-
   const candidates = [];
 
   poolItems.forEach(item => {
@@ -851,7 +822,7 @@ window.calculateOptimalAction = () => {
       btnColor = 'bg-orange-600 hover:bg-orange-500'; label = '🗑️ Rm Neg';
     }
 
-    const itemName = item.name || item.title || item.filename || `Image #${item.id}`;
+    const itemName = item.filename || `Image #${item.id}`;
 
     html += `
       <div class="${bgColor} border rounded-xl p-3 flex flex-col items-center w-36 shadow-lg relative overflow-hidden text-center transition hover:scale-105">
@@ -902,34 +873,6 @@ window.applySmartAction = (btnElement, groupId, itemId, action) => {
     }, 800);
   }
 };
-
-function initTrainingDragAndDrop() {
-  const container = $('tm-train-container');
-  let draggedItem = null;
-
-  container.addEventListener('dragstart', (e) => {
-    draggedItem = e.target.closest('.train-item');
-    if (draggedItem) {
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => draggedItem.classList.add('opacity-40', 'scale-95'), 0);
-    }
-  });
-
-  container.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    const target = e.target.closest('.train-item');
-    if (target && target !== draggedItem) {
-      const rect = target.getBoundingClientRect();
-      const mid = rect.left + rect.width / 2;
-      if (e.clientX < mid) container.insertBefore(draggedItem, target);
-      else container.insertBefore(draggedItem, target.nextSibling);
-    }
-  });
-
-  container.addEventListener('dragend', () => {
-    if (draggedItem) draggedItem.classList.remove('opacity-40', 'scale-95');
-  });
-}
 
 init();
 </script>

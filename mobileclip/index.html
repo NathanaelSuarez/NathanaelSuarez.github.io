@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Embedding Explorer (MobileCLIP)</title>
+<title>AI Embedding Explorer (MobileCLIP2)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 .item-card{background:#374151;border-radius:8px;padding:8px;cursor:grab;transition:.2s;user-select:none;display:inline-flex;flex-direction:column;align-items:center;gap:4px;position:relative;max-width:140px}
@@ -57,8 +57,8 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 <body class="bg-gray-900 text-white min-h-screen p-4">
 <div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
   <div class="spinner"></div>
-  <p id="loading-text" class="mt-4 text-lg font-bold">Initializing MobileClip Model...</p>
-  <p class="text-gray-400 text-sm mb-4">First load downloads ~350MB (cached after)</p>
+  <p id="loading-text" class="mt-4 text-lg font-bold">Initializing MobileCLIP2 Model...</p>
+  <p class="text-gray-400 text-sm mb-4">First load downloads ~136MB (cached after)</p>
   <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
 </div>
 
@@ -77,16 +77,11 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   </div>
 
   <div id="tab-classify" class="space-y-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
-        <input type="file" id="image-input" accept="image/*,video/*" multiple class="hidden">
-        <button onclick="document.getElementById('image-input').click()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-medium">📁 Upload Files</button>
-      </div>
-      <div class="bg-gray-800 p-4 rounded-xl flex gap-2 border border-gray-700">
-        <input type="text" id="text-input" placeholder="Enter text prompt..." class="flex-1 bg-gray-700 p-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="add-text-btn" class="bg-blue-600 hover:bg-blue-700 px-6 rounded-lg font-medium">Add</button>
-      </div>
+    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+      <input type="file" id="image-input" accept="image/*,video/*" multiple class="hidden">
+      <button onclick="document.getElementById('image-input').click()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-medium">📁 Upload Files</button>
     </div>
+
     <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
       <div class="flex justify-between mb-2 text-sm font-bold text-gray-400">
         <div class="flex items-center gap-3">ITEM POOL <button onclick="clearPoolOnly()" class="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-200 px-2 py-1 rounded border border-red-700 transition">🗑️ Clear Pool</button></div>
@@ -128,7 +123,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   </div>
   
   <footer class="mt-12 mb-8 text-center text-gray-500 text-xs space-y-1">
-    <p>Powered by MobileCLIP via Transformers.js</p>
+    <p>Powered by MobileCLIP2 via Transformers.js</p>
     <p class="flex items-center justify-center gap-1">
       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
       Files are processed locally in your browser. No data is sent to a server.
@@ -168,7 +163,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </div>
 
 <script type="module">
-import{AutoProcessor,AutoTokenizer,CLIPTextModelWithProjection,CLIPVisionModelWithProjection,RawImage,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
+import{AutoProcessor,CLIPVisionModelWithProjection,RawImage,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
 env.allowRemoteModels=true;env.allowLocalModels=false;
 
 document.addEventListener('mousedown',e=>{if(e.detail>1&&!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))e.preventDefault()});
@@ -223,12 +218,7 @@ async function processBatchQueue(){
 
     for(const b of txtBatch){
       if(!state.items.has(b.item.id))continue;
-      try{
-        const inputs=state.models.tokenizer(b.item.content,{padding:'max_length',truncation:true});
-        const output=await state.models.text(inputs);
-        b.item.embedding=norm(Array.from(output.text_embeds.data));
-        document.querySelector(`.item-card[data-id="${b.item.id}"]`)?.classList.remove('opacity-50');
-      }catch(e){console.error('txt embed err',e)}
+      // Text embedding disabled as text model is removed.
     }
 
     debouncedSave();
@@ -300,7 +290,7 @@ window.clearAllData=async()=>{
   if(!confirm('Clear all data?'))return;
   pendingItems=[];updateEmbedStatus();
   state.items.clear();state.nextId=0;state.lastResults=[];state.origFiles.clear();
-  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}];state.gid=1;
+  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],state.gid=1;
   document.querySelectorAll('.item-card').forEach(c=>c.remove());
   $('results-section').classList.add('hidden');
   renderGroups();updateCounts();await saveToDB();
@@ -367,11 +357,16 @@ function createCardElement(item){
 function updateCounts(){$('item-count').textContent=state.items.size+' items';document.querySelectorAll('.pool-placeholder').forEach(p=>p.style.display=state.items.size?'none':'block')}
 
 async function init(){
-  const S='Xenova/mobileclip_s2',device=navigator.gpu?'webgpu':'wasm';
-  updateProgress(10,"Loading Processor...");state.models.processor=await AutoProcessor.from_pretrained(S);
-  updateProgress(20,"Loading Tokenizer...");state.models.tokenizer=await AutoTokenizer.from_pretrained(S);
-  updateProgress(40,"Loading Vision Model...");state.models.vision=await CLIPVisionModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(40+p.progress*.3)});
-  updateProgress(70,"Loading Text Model...");state.models.text=await CLIPTextModelWithProjection.from_pretrained(S,{device,progress_callback:p=>p.status==='progress'&&updateProgress(70+p.progress*.3)});
+  const S='plhery/mobileclip2-onnx',device=navigator.gpu?'webgpu':'wasm';
+  updateProgress(10,"Loading Processor...");
+  state.models.processor=await AutoProcessor.from_pretrained(S,{config_file_name:'onnx/s2/preprocessor_config.json'});
+  updateProgress(30,"Loading Vision Model...");
+  state.models.vision=await CLIPVisionModelWithProjection.from_pretrained(S,{
+    device,
+    dtype:'fp32',
+    model_file_name:'s2/vision_model',
+    progress_callback:p=>p.status==='progress'&&updateProgress(30+p.progress*.7)
+  });
   await loadFromDB();updateCounts();$('loading-overlay').remove();setupEvents();
 }
 
@@ -508,8 +503,11 @@ window.calculateRankings=()=>{
 };
 
 function setupEvents(){
-  $('add-text-btn').onclick=()=>{const v=$('text-input').value.trim();if(v){addItem('text',v);$('text-input').value=''}};
-  $('text-input').onkeydown=e=>{if(e.key==='Enter')$('add-text-btn').click()};
+  const addTxtBtn = $('add-text-btn');
+  if (addTxtBtn) {
+    addTxtBtn.onclick=()=>{const v=$('text-input').value.trim();if(v){addItem('text',v);$('text-input').value=''}};
+    $('text-input').onkeydown=e=>{if(e.key==='Enter')addTxtBtn.click()};
+  }
   $('image-input').onchange=e=>upload(e.target.files,'pool');
   $('calculate-btn').onclick=()=>{try{const{results,meta}=window.calculateRankings();render(results,meta)}catch(e){alert(e.message)}};
 }

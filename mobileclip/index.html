@@ -527,7 +527,8 @@ function render(data,meta,cfg={}){
 // === Active Learning Selection Implementation ===
 const trainState = {
   currentGroupId: null,
-  accumulatedUserDirection: new Array(512).fill(0),
+  chosenIds: new Set(),
+  notChosenIds: new Set(),
   batchesLearned: 0,
   imagesLearned: 0,
   batchSize: 10
@@ -536,7 +537,8 @@ const trainState = {
 window.openTrainingModal = (groupId) => {
   if (trainState.currentGroupId !== groupId) {
     trainState.currentGroupId = groupId;
-    trainState.accumulatedUserDirection = new Array(512).fill(0);
+    trainState.chosenIds = new Set();
+    trainState.notChosenIds = new Set();
     trainState.batchesLearned = 0;
     trainState.imagesLearned = 0;
   }
@@ -645,57 +647,19 @@ function recordUserSelection() {
     if (item && item.embedding) {
       if (el.classList.contains('selected')) {
         chosen.push(item);
+        trainState.chosenIds.add(id);
+        trainState.notChosenIds.delete(id);
       } else {
         notChosen.push(item);
+        trainState.notChosenIds.add(id);
+        trainState.chosenIds.delete(id);
       }
     }
   });
 
   const totalImagesInBatch = chosen.length + notChosen.length;
   if (totalImagesInBatch > 0) {
-    // 1. Calculate centroid of chosen in this batch
-    let batchChosenCentroid = null;
-    if (chosen.length > 0) {
-      batchChosenCentroid = new Array(512).fill(0);
-      chosen.forEach(item => {
-        for (let i = 0; i < 512; i++) {
-          batchChosenCentroid[i] += item.embedding[i];
-        }
-      });
-      batchChosenCentroid = norm(batchChosenCentroid);
-    }
-
-    // 2. Calculate centroid of unchosen in this batch
-    let batchNotChosenCentroid = null;
-    if (notChosen.length > 0) {
-      batchNotChosenCentroid = new Array(512).fill(0);
-      notChosen.forEach(item => {
-        for (let i = 0; i < 512; i++) {
-          batchNotChosenCentroid[i] += item.embedding[i];
-        }
-      });
-      batchNotChosenCentroid = norm(batchNotChosenCentroid);
-    }
-
-    // 3. Compute a balanced direction vector for this specific batch
-    let batchDirection = new Array(512).fill(0);
-    if (batchChosenCentroid && batchNotChosenCentroid) {
-      for (let i = 0; i < 512; i++) {
-        batchDirection[i] = batchChosenCentroid[i] - batchNotChosenCentroid[i];
-      }
-      batchDirection = norm(batchDirection);
-    } else if (batchChosenCentroid) {
-      batchDirection = batchChosenCentroid;
-    } else if (batchNotChosenCentroid) {
-      batchDirection = batchNotChosenCentroid.map(v => -v);
-    }
-
-    // 4. Add the balanced batch direction to the global running vector
-    for (let i = 0; i < 512; i++) {
-      trainState.accumulatedUserDirection[i] += batchDirection[i];
-    }
-
-    trainState.imagesLearned += totalImagesInBatch;
+    trainState.imagesLearned = trainState.chosenIds.size + trainState.notChosenIds.size;
     trainState.batchesLearned++;
     $('tm-train-stats').innerText = `Images Learned: ${trainState.imagesLearned}`;
   }
@@ -705,14 +669,26 @@ window.calculateOptimalAction = () => {
   const gid = trainState.currentGroupId;
   const rArea = $('tm-recomm-area');
 
-  if (trainState.imagesLearned === 0 || trainState.batchesLearned === 0) {
+  const chosenItems = [...trainState.chosenIds].map(id => state.items.get(id)).filter(i => i && i.embedding);
+  const notChosenItems = [...trainState.notChosenIds].map(id => state.items.get(id)).filter(i => i && i.embedding);
+
+  if (chosenItems.length === 0 && notChosenItems.length === 0) {
     rArea.innerHTML = `<div class="text-yellow-400 text-sm font-bold bg-yellow-900/30 px-4 py-2 rounded-lg text-center w-full">Please select some images and click 'Save Selection & Next Batch' first.</div>`;
     rArea.classList.remove('hidden');
     return;
   }
 
-  // Get the running balanced target direction from the modal active learning
-  const w_user = norm(trainState.accumulatedUserDirection);
+  // Calculate target direction (w_user) from all cumulative positive/negative training items
+  let w_user;
+  if (chosenItems.length > 0 && notChosenItems.length > 0) {
+    const cPos = centroid(chosenItems);
+    const cNeg = centroid(notChosenItems);
+    w_user = norm(cPos.map((val, i) => val - cNeg[i]));
+  } else if (chosenItems.length > 0) {
+    w_user = norm(centroid(chosenItems));
+  } else {
+    w_user = norm(centroid(notChosenItems).map(x => -x));
+  }
 
   const allItems = [...state.items.values()];
   const poolItems = allItems.filter(i => i.zone === 'pool' && i.embedding && i.type === 'image');

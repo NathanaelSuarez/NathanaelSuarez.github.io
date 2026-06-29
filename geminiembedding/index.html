@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multimodal Embedding Explorer (Gemini)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<style>
+.item-card{background:#374151;border-radius:8px;padding:8px;cursor:grab;transition:.2s;user-select:none;display:inline-flex;flex-direction:column;align-items:center;gap:4px;position:relative;max-width:140px;min-width:100px}
+.item-card:hover{background:#4B5563;transform:scale(1.02)}
+.item-card img,.item-card video{width:80px;height:80px;object-fit:cover;border-radius:6px;pointer-events:none}
+.item-card .remove-btn{position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;opacity:0;transition:.2s;z-index:10}
+.item-card .edit-btn{position:absolute;top:-6px;left:-6px;width:20px;height:20px;background:#3B82F6;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:.2s;z-index:10}
+.item-card:hover .remove-btn,.item-card:hover .edit-btn{opacity:1}
+.item-card .card-label{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;font-size:.7rem;padding:2px 4px;width:100%;text-align:center;max-height:50px;word-break:break-word;color:#D1D5DB}
+.item-card .type-badge{position:absolute;bottom:2px;right:2px;font-size:8px;background:#1F2937;color:#9CA3AF;padding:1px 4px;border-radius:4px;text-transform:uppercase;font-weight:700;letter-spacing:.5px}
+.drop-zone{min-height:110px;border:2px dashed #4B5563;border-radius:12px;padding:16px;display:flex;flex-wrap:wrap;gap:8px;transition:.2s;align-content:flex-start}
+.drop-zone.drag-over{background:rgba(255,255,255,.05);border-color:#3B82F6}
+.spinner{width:40px;height:40px;border:4px solid #374151;border-top-color:#3B82F6;border-radius:50%;animation:s 1s linear infinite}
+.spinner-sm{width:14px;height:14px;border:2px solid #374151;border-top-color:#3B82F6;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
+.custom-scroll::-webkit-scrollbar{width:4px}
+.custom-scroll::-webkit-scrollbar-track{background:transparent}
+.custom-scroll::-webkit-scrollbar-thumb{background:#4B5563;border-radius:10px}
+.score-cell{cursor:help;position:relative}
+.score-cell:hover .score-tooltip{display:block}
+.score-tooltip{display:none;position:absolute;bottom:100%;right:0;background:#1F2937;border:1px solid #4B5563;padding:8px;border-radius:8px;font-size:11px;white-space:pre;z-index:20;min-width:120px}
+.grp-collapsed{padding:6px 12px!important}
+#sidebar{width:220px;min-width:220px;background:#1F2937;border-right:1px solid #374151;overflow-y:auto;display:flex;flex-direction:column}
+#sidebar .proj-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #374151;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;transition:.15s}
+#sidebar .proj-item:hover{background:#374151}
+#sidebar .proj-item.active{background:#3B82F6;font-weight:bold}
+#sidebar .proj-item .del-proj{opacity:0;color:#F87171;font-size:14px;cursor:pointer}
+#sidebar .proj-item:hover .del-proj{opacity:1}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:50;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+.modal-box{background:#1F2937;border:1px solid #4B5563;border-radius:12px;padding:1.5rem;max-width:600px;width:100%;max-height:85vh;overflow-y:auto}
+#preview-modal{display:none}
+#preview-modal.show{display:flex}
+.embed-progress{font-size:10px;color:#60A5FA;padding:2px 8px;background:#1E3A5F;border-radius:4px;display:none;align-items:center;gap:4px}
+.embed-progress.active{display:inline-flex}
+.upload-zone{border:2px dashed #4B5563;border-radius:12px;padding:24px;text-align:center;transition:.2s;cursor:pointer}
+.upload-zone:hover,.upload-zone.drag-over{border-color:#3B82F6;background:rgba(59,130,246,.05)}
+.api-key-input{font-family:monospace;letter-spacing:1px}
+.api-key-input::placeholder{letter-spacing:normal;font-family:inherit}
+.staging-item{background:#1F2937;border:1px solid #4B5563;border-radius:10px;padding:10px;display:flex;align-items:center;gap:10px;position:relative;transition:.15s}
+.staging-item:hover{border-color:#6B7280}
+.staging-item .remove-staging{position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:#EF4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;opacity:0;transition:.2s;color:white;z-index:5}
+.staging-item:hover .remove-staging{opacity:1}
+.staging-item img,.staging-item video{width:56px;height:56px;object-fit:cover;border-radius:6px}
+.staging-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.has-audio-badge{background:#065F46;color:#6EE7B7}
+.no-audio-badge{background:#7C2D12;color:#FDBA74}
+.send-mode-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid transparent;cursor:pointer;transition:.15s}
+.send-mode-btn.active{border-color:#3B82F6;background:#1E3A5F;color:#93C5FD}
+.send-mode-btn:not(.active){background:#374151;color:#9CA3AF}
+.send-mode-btn:not(.active):hover{background:#4B5563}
+@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.staging-item{animation:slideIn .2s ease}
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex">
+
+<!-- Previews Modal -->
+<div id="preview-modal" class="fixed inset-0 bg-black/90 z-50 items-center justify-center p-4 flex-col" onclick="handlePreviewClick(event)">
+  <div id="preview-filename" class="text-white text-sm font-medium mb-3 bg-gray-800/80 px-4 py-2 rounded-lg backdrop-blur-sm max-w-lg truncate"></div>
+  <img id="preview-img" class="max-w-full max-h-[calc(100%-60px)] object-contain rounded-lg hidden">
+  <video id="preview-video" class="max-w-full max-h-[calc(100%-60px)] object-contain rounded-lg hidden" controls></video>
+  <audio id="preview-audio" class="hidden" controls></audio>
+  <div id="preview-text" class="hidden bg-gray-800 p-6 rounded-lg max-w-2xl max-h-[calc(100%-60px)] overflow-y-auto custom-scroll whitespace-pre-wrap text-sm"></div>
+  <iframe id="preview-pdf" class="hidden rounded-lg" style="width:80vw;height:80vh;background:white"></iframe>
+</div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="p-3 border-b border-gray-700 flex justify-between items-center">
+    <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Projects</span>
+    <button onclick="newProject()" class="text-lg leading-none bg-blue-600 hover:bg-blue-700 w-6 h-6 rounded flex items-center justify-center" title="New Project">+</button>
+  </div>
+  <div id="project-list" class="flex-1 overflow-y-auto custom-scroll"></div>
+</div>
+
+<div class="flex-1 overflow-y-auto p-4">
+<div class="max-w-5xl mx-auto">
+
+  <!-- API Key -->
+  <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-4">
+    <div class="flex items-center gap-3">
+      <label class="text-xs font-bold text-gray-400 uppercase whitespace-nowrap">Gemini API Key</label>
+      <input type="password" id="api-key-input" placeholder="Enter your Gemini API key..." class="api-key-input flex-1 bg-gray-700 p-2 rounded-lg border border-gray-600 outline-none focus:ring-2 focus:ring-blue-500 text-sm" value="">
+      <button onclick="toggleKeyVisibility()" class="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg border border-gray-600">👁</button>
+      <div id="api-key-status" class="text-xs text-gray-500"></div>
+    </div>
+  </div>
+
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Multimodal Embedding Explorer</h1>
+    <div class="flex gap-2 items-center">
+      <span id="embed-status" class="embed-progress"><span class="spinner-sm"></span> <span id="embed-status-text">Embedding...</span></span>
+      <button id="share-btn" onclick="openShareModal()" class="text-xs bg-green-900/50 hover:bg-green-800 text-green-200 px-3 py-2 rounded-lg border border-green-700 transition">📤 Share</button>
+      <button onclick="clearCurrentProject()" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-200 px-3 py-2 rounded-lg border border-red-700 transition">🗑️ Clear</button>
+    </div>
+  </div>
+
+  <!-- Upload / Staging Section -->
+  <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4 mb-6">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-bold text-gray-400 uppercase tracking-wider">Compose & Send</h2>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-gray-500">Send mode:</span>
+        <button class="send-mode-btn active" data-mode="combined" onclick="setSendMode('combined')" title="All staged items → one aggregated embedding">🔗 Combined</button>
+        <button class="send-mode-btn" data-mode="separate" onclick="setSendMode('separate')" title="Each staged item → its own embedding">📦 Separate</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="upload-zone" id="file-upload-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept="image/png,image/jpeg,audio/mpeg,audio/wav,video/mp4,video/quicktime,application/pdf" multiple class="hidden">
+        <div class="text-3xl mb-2">📁</div>
+        <div class="text-sm text-gray-400">Click or drag files here</div>
+        <div class="text-xs text-gray-500 mt-1">Images · Audio · Video · PDF</div>
+      </div>
+      <div class="flex flex-col gap-2">
+        <label class="block text-xs font-bold text-gray-500 uppercase">Add Text</label>
+        <textarea id="text-input" placeholder="Enter text to stage..." class="flex-1 bg-gray-700 p-3 rounded-lg border border-gray-600 outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px] text-sm"></textarea>
+        <button id="add-text-btn" class="bg-purple-600 hover:bg-purple-700 py-2 px-6 rounded-lg font-medium text-sm">+ Stage Text</button>
+      </div>
+    </div>
+
+    <div id="staging-area" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-3">
+          <h3 class="text-sm font-bold text-gray-300">📋 Staged Items</h3>
+          <span id="staging-count" class="text-xs bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded-full font-mono">0</span>
+          <span id="staging-mode-label" class="text-xs text-gray-500">→ will produce 1 combined embedding</span>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="clearStaging()" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg border border-gray-600 transition">Clear All</button>
+        </div>
+      </div>
+
+      <div id="staging-warnings" class="space-y-1 mb-3"></div>
+      <div id="staging-list" class="space-y-2 max-h-[300px] overflow-y-auto custom-scroll mb-3"></div>
+
+      <div class="flex items-center justify-between bg-gray-900/50 p-3 rounded-xl border border-gray-600">
+        <div id="staging-summary" class="text-xs text-gray-400 space-x-3"></div>
+        <button id="send-staged-btn" onclick="sendStaged()" class="bg-blue-600 hover:bg-blue-700 px-8 py-2.5 rounded-lg font-bold text-sm shadow-lg transition hover:scale-105 flex items-center gap-2">
+          🚀 Send & Embed
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Item Pool -->
+  <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-6">
+    <div class="flex justify-between mb-2 text-sm font-bold text-gray-400">
+      <div class="flex items-center gap-3">ITEM POOL <button onclick="clearPoolOnly()" class="text-[10px] bg-red-900/50 hover:bg-red-800 text-red-200 px-2 py-1 rounded border border-red-700 transition">🗑️ Clear Pool</button></div>
+      <span id="item-count">0 items</span>
+    </div>
+    <div id="items-pool" class="drop-zone custom-scroll overflow-y-auto" data-zone="pool">
+      <p class="pool-placeholder text-gray-500 text-sm w-full text-center py-8 pointer-events-none">Add files or text to get started</p>
+    </div>
+  </div>
+
+  <!-- Concept Groups -->
+  <div id="concept-groups" class="space-y-2 mb-6"></div>
+
+  <!-- Controls & Calculate -->
+  <div class="text-center pb-6 space-y-4">
+    <div class="flex items-center justify-center flex-wrap gap-6 bg-gray-800 p-4 rounded-xl border border-gray-700 w-fit mx-auto">
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-bold text-gray-400 uppercase">Include Groups in Results</label>
+        <input type="checkbox" id="filter-all" class="accent-purple-500 w-4 h-4">
+      </div>
+      <div class="flex items-center gap-2 border-l border-gray-600 pl-6">
+        <label class="text-xs font-bold text-gray-400 uppercase">Combine</label>
+        <select id="agg-method" class="bg-gray-700 text-white rounded p-1 text-xs border border-gray-600 outline-none focus:ring-1 focus:ring-purple-500">
+          <option value="avg">Average</option>
+          <option value="max">Maximum</option>
+          <option value="min">Minimum</option>
+        </select>
+      </div>
+    </div>
+    <button id="calculate-btn" class="bg-purple-600 hover:bg-purple-700 px-12 py-4 rounded-xl font-bold text-xl shadow-xl transition hover:scale-105">🚀 Rank by Semantic Similarity</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section" class="bg-gray-800 p-6 rounded-xl hidden mb-20 border border-gray-700">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-bold">Ranked Results</h2>
+      <div class="flex items-center gap-3">
+        <button id="copy-all-btn" onclick="copyAllResults()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg font-bold transition flex items-center gap-2">📋 Copy All</button>
+        <div id="result-meta" class="text-sm text-gray-400"></div>
+      </div>
+    </div>
+    <div id="results-content" class="space-y-3"></div>
+  </div>
+
+  <footer class="mt-12 mb-8 text-center text-gray-500 text-xs space-y-1">
+    <p>Powered by Gemini Embedding API (gemini-embedding-2-preview)</p>
+    <p>Files are sent to Google's API for embedding. Only compressed thumbnails are stored locally.</p>
+  </footer>
+</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ===== Helpers =====
+const truncate = (s, max) => { s = s || ''; return s.length > max ? s.slice(0, max) + '…' : s; };
+const escHtml = s => { s = s || ''; return s.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); };
+
+const TYPE_ICONS = { text: '📝', image: '🖼️', audio: '🔊', video: '🎬', pdf: '📄' };
+function getItemType(mimeType) {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType === 'application/pdf') return 'pdf';
+  return 'text';
+}
+
+function calcThumbSize(w, h, MAX = 512) {
+  if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } 
+  else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+  return { w, h };
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / 1048576).toFixed(1) + 'MB';
+}
+
+function formatDuration(s) {
+  if (!s) return '';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m ? `${m}m${sec}s` : `${sec}s`;
+}
+
+// ===== Math Core Functions =====
+const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
+const normVec = v => { let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i]; const m = Math.sqrt(s); return v.map(x => x / (m || 1)); };
+const centroid = arr => { const d = arr[0].embedding.length; const r = new Array(d).fill(0); arr.forEach(x => { for (let i = 0; i < d; i++) r[i] += x.embedding[i]; }); return r.map(x => x / arr.length); };
+
+// ===== State =====
+const state = {
+  items: new Map(),
+  nextId: 0,
+  groups:[{id: 0, name: 'Concept 1', on: true, open: true, swapped: false}],
+  gid: 1,
+  lastResults:[]
+};
+
+let currentProjId = null;
+
+// ===== Staging State =====
+let stagingItems =[]; 
+let stagingSid = 0;
+let sendMode = 'combined'; 
+
+// ===== API Key =====
+function getApiKey() { return localStorage.getItem('gemini_api_key') || ''; }
+function setApiKey(key) { localStorage.setItem('gemini_api_key', key); }
+$('api-key-input').value = getApiKey();
+$('api-key-input').oninput = () => {
+  setApiKey($('api-key-input').value.trim());
+  $('api-key-status').textContent = $('api-key-input').value.trim() ? '✓ Saved' : '';
+  $('api-key-status').className = 'text-xs ' + ($('api-key-input').value.trim() ? 'text-green-400' : 'text-gray-500');
+};
+if (getApiKey()) { $('api-key-status').textContent = '✓ Saved'; $('api-key-status').className = 'text-xs text-green-400'; }
+window.toggleKeyVisibility = () => { const inp = $('api-key-input'); inp.type = inp.type === 'password' ? 'text' : 'password'; };
+
+// ===== IndexedDB =====
+const DB_NAME = 'GeminiEmbedDB', DB_VERSION = 2;
+const dbPromise = new Promise((res, rej) => {
+  const r = indexedDB.open(DB_NAME, DB_VERSION);
+  r.onerror = e => rej(e.target.error);
+  r.onupgradeneeded = e => { const db = e.target.result; if (!db.objectStoreNames.contains('appState')) db.createObjectStore('appState', { keyPath: 'id' }); };
+  r.onsuccess = e => res(e.target.result);
+});
+
+async function saveToDB() {
+  if (!currentProjId) return;
+  const db = await dbPromise; const tx = db.transaction('appState', 'readwrite'); const s = tx.objectStore('appState');
+  const items = [...state.items.values()].map(i => ({...i}));
+  s.put({ id: 'items_' + currentProjId, items });
+  s.put({ id: 'state_' + currentProjId, nextId: state.nextId, groups: state.groups, gid: state.gid });
+}
+
+async function loadFromDB() {
+  if (!currentProjId) return;
+  const db = await dbPromise;
+  return new Promise(res => {
+    const tx = db.transaction('appState', 'readonly'); const s = tx.objectStore('appState');
+    const r1 = s.get('items_' + currentProjId); const r2 = s.get('state_' + currentProjId);
+    let c = 0; const done = () => { if (++c === 2) res(); };
+    r1.onsuccess = () => { if (r1.result) r1.result.items.forEach(i => state.items.set(i.id, i)); done(); };
+    r2.onsuccess = () => { if (r2.result) { state.nextId = r2.result.nextId || 0; if (r2.result.groups) { state.groups = r2.result.groups.map(g => ({...g, swapped: g.swapped || false})); state.gid = r2.result.gid; } } done(); };
+  });
+}
+
+let saveTimer = null;
+function debouncedSave() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(() => { saveTimer = null; saveToDB(); }, 500); }
+
+// ===== Projects =====
+const PROJ_DB = 'GeminiEmbedProjects';
+function getProjMeta() { return JSON.parse(localStorage.getItem(PROJ_DB + '_meta') || '[]'); }
+function setProjMeta(m) { localStorage.setItem(PROJ_DB + '_meta', JSON.stringify(m)); }
+function uniqueName(name, meta) { const names = meta.map(p => p.name); if (!names.includes(name)) return name; let n = 2; while (names.includes(`${name} (${n})`)) n++; return `${name} (${n})`; }
+
+function renderProjects() {
+  const list = $('project-list'), meta = getProjMeta();
+  list.innerHTML = meta.map(p => `<div class="proj-item${p.id === currentProjId ? ' active' : ''}" onclick="switchProject('${p.id}')"><span class="truncate flex-1">${escHtml(p.name)}</span><span class="del-proj" onclick="event.stopPropagation();deleteProject('${p.id}')" title="Delete">×</span></div>`).join('');
+}
+
+window.newProject = (name) => { const meta = getProjMeta(), id = 'p_' + Date.now(); name = name || prompt('Project name:', 'Project ' + (meta.length + 1)); if (!name) return; name = uniqueName(name, meta); meta.push({ id, name }); setProjMeta(meta); switchProject(id); };
+window.deleteProject = async (id) => { if (!confirm('Delete this project?')) return; let meta = getProjMeta(); meta = meta.filter(p => p.id !== id); setProjMeta(meta); const db = await dbPromise; const tx = db.transaction('appState', 'readwrite'); tx.objectStore('appState').delete('items_' + id); tx.objectStore('appState').delete('state_' + id); if (id === currentProjId) { currentProjId = meta.length ? meta[0].id : null; if (currentProjId) switchProject(currentProjId); else { resetState(); renderGroups(); updateCounts(); renderProjects(); } } else renderProjects(); };
+window.switchProject = async (id) => { if (currentProjId) await saveToDB(); currentProjId = id; resetState(); document.querySelectorAll('.item-card').forEach(e => e.remove()); $('results-section').classList.add('hidden'); await loadFromDB(); renderGroups(); updateCounts(); renderProjects(); };
+function resetState() { state.items.clear(); state.nextId = 0; state.groups =[{id: 0, name: 'Concept 1', on: true, open: true, swapped: false}]; state.gid = 1; state.lastResults =[]; clearStaging(); }
+
+window.clearCurrentProject = async () => { if (!confirm('Clear workspace?')) return; resetState(); pendingEmbeds =[]; document.querySelectorAll('.item-card').forEach(e => e.remove()); renderGroups(); updateCounts(); $('results-section').classList.add('hidden'); await saveToDB(); };
+window.clearPoolOnly = async () => { if (!confirm('Clear pool items?')) return; [...state.items.values()].filter(i => i.zone === 'pool').forEach(i => { state.items.delete(i.id); document.querySelector(`.item-card[data-id="${i.id}"]`)?.remove(); }); pendingEmbeds = pendingEmbeds.filter(p => state.items.has(p.id)); updateEmbedStatus(); updateCounts(); await saveToDB(); };
+
+// ===== Embedding Queue =====
+let pendingEmbeds =[];
+let embedRunning = false;
+
+function updateEmbedStatus() {
+  const n = pendingEmbeds.length; const el = $('embed-status');
+  if (n > 0) { el.classList.add('active'); $('embed-status-text').textContent = `Embedding ${n} remaining...`; }
+  else el.classList.remove('active');
+}
+
+async function processEmbedQueue() {
+  if (embedRunning) return; embedRunning = true;
+  while (pendingEmbeds.length > 0) {
+    updateEmbedStatus(); const task = pendingEmbeds.shift();
+    if (!state.items.has(task.itemId)) continue;
+    try {
+      const embedding = await callGeminiEmbedParts(task.parts);
+      if (state.items.has(task.itemId)) {
+        const item = state.items.get(task.itemId);
+        item.embedding = embedding;
+        const card = document.querySelector(`.item-card[data-id="${task.itemId}"]`);
+        if (card) card.classList.remove('opacity-50');
+        debouncedSave();
+      }
+    } catch (e) {
+      console.error('Embed error', task.itemId, e);
+      const card = document.querySelector(`.item-card[data-id="${task.itemId}"]`);
+      if (card) { card.classList.add('border', 'border-red-500'); card.title = 'Embedding failed: ' + e.message; }
+    }
+  }
+  updateEmbedStatus(); embedRunning = false;
+}
+
+function enqueueEmbed(task) { pendingEmbeds.push(task); updateEmbedStatus(); processEmbedQueue(); }
+
+// ===== Gemini API =====
+async function callGeminiEmbedParts(parts) {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('No API key set');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent?key=${apiKey}`;
+  const body = { model: 'models/gemini-embedding-2-preview', content: { parts } };
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error?.message || `API error ${resp.status}`); }
+  const data = await resp.json();
+  if (data.embedding?.values) return data.embedding.values;
+  throw new Error('No embedding in response');
+}
+
+// ===== Thumbnail & File parsing =====
+function generateImageThumbnail(dataUrl) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      const { w, h } = calcThumbSize(img.width, img.height);
+      c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = () => res(null); img.src = dataUrl;
+  });
+}
+
+function generateVideoThumbnail(url) {
+  return new Promise(res => {
+    const video = document.createElement('video'); video.muted = true; video.preload = 'metadata';
+    video.src = url;
+    video.onloadeddata = () => { video.currentTime = Math.min(1, video.duration / 4); };
+    video.onseeked = () => {
+      const c = document.createElement('canvas');
+      const { w, h } = calcThumbSize(video.videoWidth, video.videoHeight);
+      c.width = w; c.height = h; c.getContext('2d').drawImage(video, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', 0.6));
+    };
+    video.onerror = () => res(null);
+  });
+}
+
+function detectVideoAudio(file, url) {
+  return new Promise(res => {
+    const video = document.createElement('video'); video.preload = 'metadata';
+    video.src = url;
+    video.onloadedmetadata = () => {
+      let hasAudio = video.mozHasAudio || video.audioTracks?.length > 0;
+      const duration = video.duration;
+      
+      video.muted = true; video.currentTime = 0.5;
+      video.onseeked = () => {
+        if (video.webkitAudioDecodedByteCount !== undefined && video.webkitAudioDecodedByteCount > 0) {
+          hasAudio = true;
+        }
+        
+        tryDetectAudioViaContext(file).then(ctxHasAudio => {
+          res({ hasAudio: hasAudio || ctxHasAudio, duration });
+        }).catch(() => res({ hasAudio, duration }));
+      };
+      
+      video.onerror = () => res({ hasAudio: false, duration });
+    };
+    video.onerror = () => res({ hasAudio: false, duration: 0 });
+  });
+}
+
+function getAudioDuration(url) {
+  return new Promise(res => {
+    const a = document.createElement('audio'); a.preload = 'metadata';
+    a.src = url;
+    a.onloadedmetadata = () => res(a.duration);
+    a.onerror = () => res(null);
+  });
+}
+
+async function tryDetectAudioViaContext(file) {
+  try {
+    const buf = await file.slice(0, 512 * 1024).arrayBuffer();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await ctx.decodeAudioData(buf);
+    ctx.close();
+    return decoded.numberOfChannels > 0 && decoded.duration > 0.01;
+  } catch { return false; }
+}
+
+async function extractAudioAsWavBase64(file) {
+  const buf = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(buf);
+  ctx.close();
+
+  const TARGET_RATE = 16000;
+  const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, decoded.duration * TARGET_RATE, TARGET_RATE);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = decoded;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+  const rendered = await offlineCtx.startRendering();
+
+  const chanData = rendered.getChannelData(0);
+  const dataLength = chanData.length * 2;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+
+  const writeString = (o, str) => { for(let i=0; i<str.length; i++) view.setUint8(o+i, str.charCodeAt(i)); };
+  
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); 
+  view.setUint16(22, 1, true); 
+  view.setUint32(24, TARGET_RATE, true);
+  view.setUint32(28, TARGET_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); 
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < chanData.length; i++) {
+    let s = Math.max(-1, Math.min(1, chanData[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    offset += 2;
+  }
+
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 32768) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+  }
+  return btoa(binary);
+}
+
+function readFileAsBase64(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+}
+function readFileAsDataURL(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+}
+
+// ===== Send Mode =====
+window.setSendMode = (mode) => {
+  sendMode = mode;
+  document.querySelectorAll('.send-mode-btn').forEach(b => { b.classList.toggle('active', b.dataset.mode === mode); });
+  updateStagingUI();
+};
+
+// ===== Staging =====
+window.clearStaging = () => {
+  stagingItems.forEach(si => { if (si.objectUrl) URL.revokeObjectURL(si.objectUrl); });
+  stagingItems =[];
+  updateStagingUI();
+};
+
+window.removeStagingItem = (sid) => {
+  const idx = stagingItems.findIndex(s => s.sid === sid);
+  if (idx >= 0) { if (stagingItems[idx].objectUrl) URL.revokeObjectURL(stagingItems[idx].objectUrl); stagingItems.splice(idx, 1); }
+  updateStagingUI();
+}
+
+function updateStagingUI() {
+  const area = $('staging-area');
+  if (!stagingItems.length) { area.classList.add('hidden'); return; }
+  area.classList.remove('hidden');
+
+  $('staging-count').textContent = stagingItems.length;
+
+  if (sendMode === 'combined') {
+    $('staging-mode-label').textContent = `→ will produce 1 combined embedding`;
+  } else {
+    $('staging-mode-label').textContent = `→ will produce ${stagingItems.length} separate embedding${stagingItems.length > 1 ? 's' : ''}`;
+  }
+
+  const list = $('staging-list');
+  list.innerHTML = stagingItems.map(si => {
+    let visual = '';
+    if (si.thumbnail) {
+      visual = `<img src="${si.thumbnail}" class="w-14 h-14 object-cover rounded-lg flex-shrink-0">`;
+    } else if (si.type === 'text') {
+      visual = `<div class="w-14 h-14 flex items-center justify-center text-2xl bg-gray-700 rounded-lg flex-shrink-0">${TYPE_ICONS.text}</div>`;
+    } else {
+      visual = `<div class="w-14 h-14 flex items-center justify-center text-2xl bg-gray-600 rounded-lg flex-shrink-0">${TYPE_ICONS[si.type] || '📎'}</div>`;
+    }
+
+    let info = '';
+    if (si.type === 'text') {
+      info = `<div class="text-sm truncate font-medium">${escHtml(truncate(si.content, 120))}</div>
+              <div class="text-xs text-gray-500">${(si.content || '').length} chars</div>`;
+    } else {
+      info = `<div class="text-sm truncate font-medium">${escHtml(si.filename)}</div>
+              <div class="flex items-center gap-2 flex-wrap mt-0.5">
+                <span class="staging-badge" style="background:#1F2937;color:#9CA3AF">${si.type.toUpperCase()}</span>
+                ${si.fileSize ? `<span class="text-xs text-gray-500">${formatFileSize(si.fileSize)}</span>` : ''}
+                ${si.duration ? `<span class="text-xs text-gray-500">${formatDuration(si.duration)}</span>` : ''}
+                ${si.type === 'video' ? (si.hasAudio ? `<span class="staging-badge has-audio-badge">🔊 Has Audio</span>` : `<span class="staging-badge no-audio-badge">🔇 No Audio</span>`) : ''}
+              </div>`;
+    }
+
+    return `<div class="staging-item" data-sid="${si.sid}">
+      <div class="remove-staging" onclick="removeStagingItem(${si.sid})">×</div>
+      ${visual}
+      <div class="flex-1 min-w-0">${info}</div>
+    </div>`;
+  }).join('');
+
+  const warns =[];
+  const types = { image: 0, video: 0, audio: 0, pdf: 0, text: 0 };
+  stagingItems.forEach(si => { types[si.type] = (types[si.type] || 0) + 1; });
+
+  if (sendMode === 'combined') {
+    if (types.video > 1) warns.push('⚠️ API allows max 1 video per request');
+    if (types.audio > 1) warns.push('⚠️ API allows max 1 audio per request');
+    if (types.pdf > 1) warns.push('⚠️ API allows max 1 PDF per request');
+    if (types.image > 6) warns.push('⚠️ API allows max 6 images per request');
+    const hasVideo = stagingItems.some(s => s.type === 'video');
+    if (hasVideo) {
+      const vids = stagingItems.filter(s => s.type === 'video');
+      vids.forEach(v => {
+        if (v.hasAudio && v.duration > 80) warns.push(`⚠️ "${v.filename}": video with audio must be ≤80s (got ${formatDuration(v.duration)})`);
+        else if (!v.hasAudio && v.duration > 120) warns.push(`⚠️ "${v.filename}": video without audio must be ≤120s (got ${formatDuration(v.duration)})`);
+      });
+    }
+    const audioItems = stagingItems.filter(s => s.type === 'audio');
+    audioItems.forEach(a => {
+      if (a.duration > 80) warns.push(`⚠️ "${a.filename}": audio must be ≤80s (got ${formatDuration(a.duration)})`);
+    });
+  }
+
+  $('staging-warnings').innerHTML = warns.map(w => `<div class="text-xs text-yellow-400 bg-yellow-900/30 border border-yellow-700/50 px-3 py-1.5 rounded-lg">${w}</div>`).join('');
+
+  const parts =[];
+  if (types.text) parts.push(`${types.text} text${types.text > 1 ? 's' : ''}`);
+  if (types.image) parts.push(`${types.image} image${types.image > 1 ? 's' : ''}`);
+  if (types.video) parts.push(`${types.video} video${types.video > 1 ? 's' : ''}`);
+  if (types.audio) parts.push(`${types.audio} audio`);
+  if (types.pdf) parts.push(`${types.pdf} PDF${types.pdf > 1 ? 's' : ''}`);
+  $('staging-summary').innerHTML = parts.map(p => `<span>${p}</span>`).join('');
+}
+
+async function stageFile(file) {
+  const mimeType = file.type;
+  const itemType = getItemType(mimeType);
+
+  if (itemType === 'image' && !['image/png', 'image/jpeg'].includes(mimeType)) { alert(`Unsupported image format: ${mimeType}. Use PNG or JPEG.`); return; }
+  if (itemType === 'audio' && !['audio/mpeg', 'audio/wav'].includes(mimeType)) { alert(`Unsupported audio format: ${mimeType}. Use MP3 or WAV.`); return; }
+  if (itemType === 'video' && !['video/mp4', 'video/quicktime'].includes(mimeType)) { alert(`Unsupported video format: ${mimeType}. Use MP4 or MOV.`); return; }
+  if (mimeType !== 'application/pdf' && !['image/', 'audio/', 'video/'].some(t => mimeType.startsWith(t))) { alert(`Unsupported file type: ${mimeType}`); return; }
+
+  const base64 = await readFileAsBase64(file);
+  let thumbnail = null;
+  let hasAudio = false;
+  let duration = null;
+  let audioBase64 = null;
+  const url = URL.createObjectURL(file);
+
+  if (itemType === 'image') {
+    const dataUrl = await readFileAsDataURL(file);
+    thumbnail = await generateImageThumbnail(dataUrl);
+  } else if (itemType === 'video') {
+    thumbnail = await generateVideoThumbnail(url);
+    const info = await detectVideoAudio(file, url);
+    hasAudio = info.hasAudio;
+    duration = info.duration;
+    
+    if (hasAudio) {
+      try {
+        audioBase64 = await extractAudioAsWavBase64(file);
+      } catch(e) {
+        console.warn('Failed to extract audio track:', e);
+      }
+    }
+  } else if (itemType === 'audio') {
+    duration = await getAudioDuration(url);
+  }
+
+  const si = {
+    sid: stagingSid++,
+    type: itemType,
+    content: file.name,
+    filename: file.name,
+    mimeType,
+    thumbnail,
+    rawBase64: base64,
+    hasAudio,
+    audioBase64,
+    duration,
+    fileSize: file.size,
+    objectUrl: url
+  };
+
+  stagingItems.push(si);
+  updateStagingUI();
+}
+
+$('add-text-btn').onclick = () => {
+  const v = $('text-input').value.trim();
+  if (v) { 
+    stagingItems.push({ sid: stagingSid++, type: 'text', content: v, filename: null, thumbnail: null, objectUrl: null }); 
+    $('text-input').value = ''; 
+    updateStagingUI(); 
+  }
+};
+
+// ===== Send Staged Items =====
+window.sendStaged = async () => {
+  if (!stagingItems.length) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('Please enter your Gemini API key first!'); $('api-key-input').focus(); return; }
+
+  const btn = $('send-staged-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Sending...';
+
+  try {
+    if (sendMode === 'combined' && stagingItems.length > 1) {
+      await sendCombined();
+    } else {
+      await sendSeparate();
+    }
+  } catch (e) {
+    console.error('Send error', e);
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '🚀 Send & Embed';
+  }
+};
+
+async function sendCombined() {
+  const parts = [];
+  const labels =[];
+  const thumbnails =[];
+  const types = new Set();
+
+  for (const si of stagingItems) {
+    types.add(si.type);
+    if (si.type === 'text') {
+      parts.push({ text: si.content });
+      labels.push(truncate(si.content, 60));
+    } else {
+      parts.push({ inline_data: { mime_type: si.mimeType, data: si.rawBase64 } });
+      
+      if (si.type === 'video' && si.hasAudio && si.audioBase64) {
+        parts.push({ inline_data: { mime_type: 'audio/wav', data: si.audioBase64 } });
+      }
+      
+      labels.push(si.filename);
+    }
+    if (si.thumbnail) thumbnails.push(si.thumbnail);
+  }
+
+  const combinedLabel = labels.join(' + ');
+  const combinedType = [...types].join('+');
+
+  const item = {
+    id: state.nextId++,
+    type: combinedType,
+    content: combinedLabel, 
+    thumbnail: thumbnails[0] || null,
+    extraThumbnails: thumbnails.slice(1),
+    filename: truncate(combinedLabel, 80),
+    mimeType: 'multimodal/combined',
+    embedding: null,
+    zone: 'pool',
+    partCount: stagingItems.length,
+    partTypes: [...types]
+  };
+
+  state.items.set(item.id, item);
+  createCardElement(item);
+  enqueueEmbed({ itemId: item.id, parts });
+
+  clearStaging();
+  debouncedSave();
+}
+
+async function sendSeparate() {
+  for (const si of stagingItems) {
+    let parts =[];
+    if (si.type === 'text') {
+      parts = [{ text: si.content }];
+    } else {
+      parts =[{ inline_data: { mime_type: si.mimeType, data: si.rawBase64 } }];
+      
+      if (si.type === 'video' && si.hasAudio && si.audioBase64) {
+        parts.push({ inline_data: { mime_type: 'audio/wav', data: si.audioBase64 } });
+      }
+    }
+
+    const item = {
+      id: state.nextId++,
+      type: si.type,
+      content: si.type === 'text' ? si.content : si.filename,
+      thumbnail: si.thumbnail,
+      filename: si.filename,
+      mimeType: si.mimeType,
+      embedding: null,
+      zone: 'pool',
+      hasAudio: si.hasAudio,
+      duration: si.duration,
+      fileSize: si.fileSize
+    };
+
+    state.items.set(item.id, item);
+    createCardElement(item);
+    enqueueEmbed({ itemId: item.id, parts });
+  }
+
+  clearStaging();
+  debouncedSave();
+}
+
+// ===== Card Rendering =====
+function makeCard(item) {
+  const card = document.createElement('div');
+  card.className = 'item-card' + (item.embedding ? '' : ' opacity-50');
+  card.draggable = true; card.dataset.id = item.id;
+  card.title = item.type === 'text' ? item.content : (item.filename || item.type);
+  let inner = '';
+
+  inner += `<div class="edit-btn" onclick="event.stopPropagation();editItem(${item.id})" title="${item.type === 'text' ? 'Edit Text' : 'Rename'}">✎</div>`;
+
+  if (item.extraThumbnails && item.extraThumbnails.length > 0 && item.thumbnail) {
+    inner += `<div class="relative w-[80px] h-[60px]" onclick="showPreview(${item.id})">`;
+    inner += `<img src="${item.thumbnail}" class="absolute top-0 left-0 w-[50px] h-[50px] object-cover rounded-md border-2 border-gray-800 z-10">`;
+    if (item.extraThumbnails[0]) inner += `<img src="${item.extraThumbnails[0]}" class="absolute top-2 left-6 w-[50px] h-[50px] object-cover rounded-md border-2 border-gray-800 z-0 opacity-80">`;
+    inner += `</div>`;
+  } else if (item.thumbnail) {
+    inner += `<img src="${item.thumbnail}" onclick="showPreview(${item.id})">`;
+  } else if (item.type === 'text') {
+    inner += `<div class="w-[80px] h-[60px] flex items-center justify-center text-3xl">${TYPE_ICONS.text}</div>`;
+  } else {
+    const icon = TYPE_ICONS[item.type] || TYPE_ICONS[item.partTypes?.[0]] || '📎';
+    inner += `<div class="w-[80px] h-[60px] flex items-center justify-center text-3xl bg-gray-600 rounded-md">${icon}</div>`;
+  }
+
+  const rawLabel = item.type === 'text' ? item.content : (item.filename || item.content || item.type || '');
+  inner += `<div class="card-label">${escHtml(truncate(rawLabel, 60))}</div>`;
+
+  if (item.partCount && item.partCount > 1) {
+    inner += `<div class="type-badge" style="background:#1E3A5F;color:#93C5FD">${item.partCount} parts</div>`;
+  } else {
+    inner += `<div class="type-badge">${item.type}</div>`;
+  }
+
+  inner += `<div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})" title="Remove">×</div>`;
+  card.innerHTML = inner;
+  card.ondragstart = e => e.dataTransfer.setData('id', item.id);
+  return card;
+}
+
+function createCardElement(item) {
+  const zone = item.zone === 'pool' ? $('items-pool') : (document.querySelector(`[data-zone="${item.zone}"]`) || $('items-pool'));
+  if (!document.querySelector(`[data-zone="${item.zone}"]`) && item.zone !== 'pool') item.zone = 'pool';
+  zone.appendChild(makeCard(item));
+  updateCounts();
+}
+
+function updateCounts() {
+  $('item-count').textContent = state.items.size + ' items';
+  const ph = $('items-pool').querySelector('.pool-placeholder');
+  if (ph) ph.style.display = state.items.size ? 'none' : 'block';
+}
+
+// ===== Item Actions =====
+window.removeItem = (id) => {
+  const item = state.items.get(id); if (!item) return;
+  const card = document.querySelector(`.item-card[data-id="${id}"]`);
+  if (item.zone !== 'pool') { item.zone = 'pool'; $('items-pool').appendChild(card); }
+  else { state.items.delete(id); pendingEmbeds = pendingEmbeds.filter(p => p.itemId !== id); card?.remove(); }
+  updateCounts(); debouncedSave();
+};
+
+window.editItem = async (id) => {
+  const item = state.items.get(id); if (!item) return;
+  const bg = document.createElement('div'); bg.className = 'modal-bg';
+  const isText = item.type === 'text';
+  
+  const inputHtml = isText 
+    ? `<textarea class="flex-1 bg-gray-900 border border-gray-700 p-3 rounded-lg outline-none custom-scroll text-sm min-h-[200px]">${escHtml(item.content)}</textarea>`
+    : `<input type="text" class="bg-gray-900 border border-gray-700 p-3 rounded-lg outline-none text-sm" value="${escHtml(item.filename || item.content || item.type)}">`;
+
+  bg.innerHTML = `
+    <div class="modal-box flex flex-col gap-2">
+      <div class="flex justify-between font-bold">
+        <span>${isText ? 'Edit Text Item' : 'Rename Item'}</span>
+        <span class="text-xs text-gray-400 font-normal">${isText ? 'Ctrl+Enter' : 'Enter'} to save</span>
+      </div>
+      ${inputHtml}
+      <div class="flex justify-end gap-2 mt-2">
+        <button class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" onclick="this.closest('.modal-bg').remove()">Cancel</button>
+        <button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm" id="save-edit-btn">${isText ? 'Save & Re-embed' : 'Save'}</button>
+      </div>
+    </div>`;
+
+  const save = async () => {
+    const inp = bg.querySelector('textarea') || bg.querySelector('input');
+    const v = inp.value.trim(); bg.remove();
+    if (isText) {
+      if (v && v !== item.content) {
+        item.content = v; item.embedding = null;
+        const c = document.querySelector(`.item-card[data-id="${id}"]`);
+        if (c) { c.title = v; c.querySelector('.card-label').textContent = truncate(v, 60); c.classList.add('opacity-50'); }
+        enqueueEmbed({ itemId: item.id, parts: [{ text: v }] }); debouncedSave();
+      }
+    } else {
+      if (v && v !== item.filename) {
+        item.filename = v;
+        const c = document.querySelector(`.item-card[data-id="${id}"]`);
+        if (c) { c.title = v; c.querySelector('.card-label').textContent = truncate(v, 60); }
+        debouncedSave();
+      }
+    }
+  };
+
+  bg.querySelector('#save-edit-btn').onclick = save;
+  const inp = bg.querySelector('textarea') || bg.querySelector('input');
+  inp.onkeydown = e => {
+    if (e.key === 'Enter' && (!isText || e.ctrlKey)) save();
+    else if (e.key === 'Escape') bg.remove();
+  };
+  bg.onclick = e => { if (e.target === bg) bg.remove(); };
+  document.body.appendChild(bg);
+  if (isText) inp.focus(); else inp.select();
+};
+
+window.showPreview = (id) => {
+  const item = state.items.get(id); if (!item) return;
+  $('preview-img').classList.add('hidden'); $('preview-video').classList.add('hidden');
+  $('preview-audio').classList.add('hidden'); $('preview-text').classList.add('hidden'); $('preview-pdf').classList.add('hidden');
+  $('preview-filename').textContent = item.filename || item.content || item.type; $('preview-filename').style.display = 'block';
+
+  if (item.type === 'text' || item.type?.includes('+')) {
+    $('preview-text').textContent = item.content; $('preview-text').classList.remove('hidden');
+  } else if (item.thumbnail) {
+    $('preview-img').src = item.thumbnail; $('preview-img').classList.remove('hidden');
+  }
+  $('preview-modal').classList.add('show');
+};
+
+window.handlePreviewClick = (e) => {
+  if (e.target === $('preview-modal') || e.target === $('preview-filename')) {
+    $('preview-modal').classList.remove('show');
+    $('preview-video').pause?.(); $('preview-audio').pause?.();
+  }
+};
+
+// ===== Concept Groups =====
+function renderGroups() {
+  document.querySelectorAll('.item-card').forEach(e => e.remove());
+  const frag = document.createDocumentFragment();
+  state.groups.forEach(g => {
+    const div = document.createElement('div');
+    div.className = `bg-gray-800 rounded-xl border border-gray-700${g.on ? '' : ' opacity-50'}`;
+    const swapInd = g.swapped ? '<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>' : '';
+    div.innerHTML = `
+      <div class="flex items-center gap-2 p-3 ${g.open ? '' : 'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})">
+        <input type="checkbox"${g.on ? ' checked' : ''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()">
+        <span class="grp-name font-bold flex-1 px-1 rounded">${escHtml(g.name)}${swapInd}</span>
+        <button onclick="renameGrpPrompt(${g.id});event.stopPropagation()" class="text-[10px] bg-gray-700 hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500" title="Rename">✏️</button>
+        <button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped ? 'bg-yellow-600' : 'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500" title="Invert concept">⇄</button>
+        <span class="text-gray-400 text-xs">${g.open ? '▼' : '▶'}</span>
+        ${state.groups.length > 1 ? `<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>` : ''}
+      </div>
+      <div class="${g.open ? 'grid' : 'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600">
+        <div class="border-l-4 ${g.swapped ? 'border-red-500' : 'border-green-500'} pl-3">
+          <div class="text-sm mb-2"><span class="${g.swapped ? 'text-red-400' : 'text-green-400'} font-bold">${g.swapped ? '➖ Negative' : '➕ Positive'}</span></div>
+          <div class="drop-zone" data-zone="pos-${g.id}"></div>
+        </div>
+        <div class="border-l-4 ${g.swapped ? 'border-green-500' : 'border-red-500'} pl-3">
+          <div class="text-sm mb-2"><span class="${g.swapped ? 'text-green-400' : 'text-red-400'} font-bold">${g.swapped ? '➕ Positive' : '➖ Negative'}</span></div>
+          <div class="drop-zone" data-zone="neg-${g.id}"></div>
+        </div>
+      </div>`;
+    frag.appendChild(div);
+  });
+  if (state.groups.length < 10) {
+    const btn = document.createElement('button');
+    btn.className = 'w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';
+    btn.textContent = `+ Add Concept Group (${state.groups.length}/10)`; btn.onclick = addGrp;
+    frag.appendChild(btn);
+  }
+  $('concept-groups').innerHTML = ''; $('concept-groups').appendChild(frag);[...state.items.values()].forEach(createCardElement);
+  setupDropZones();
+}
+
+function setupDropZones() {
+  document.querySelectorAll('.drop-zone').forEach(z => {
+    z.ondragover = e => { e.preventDefault(); z.classList.add('drag-over'); };
+    z.ondragleave = z.ondrop = e => {
+      z.classList.remove('drag-over');
+      if (e.type === 'drop') {
+        e.preventDefault(); const id = +e.dataTransfer.getData('id'); 
+        if (!isNaN(id) && state.items.has(id)) { 
+          const it = state.items.get(id); it.zone = z.dataset.zone; 
+          const c = document.querySelector(`.item-card[data-id="${id}"]`); 
+          if (c) z.appendChild(c); 
+          updateCounts(); debouncedSave(); 
+        } 
+      }
+    };
+  });
+}
+
+window.renameGrpPrompt = (id) => { const g = state.groups.find(x => x.id === id); if (!g) return; const n = prompt('Rename concept:', g.name); if (n && n.trim()) { g.name = n.trim(); renderGroups(); debouncedSave(); } };
+window.addGrp = () => { if (state.groups.length >= 10) return; const used = state.groups.map(g => { const m = g.name.match(/^Concept (\d+)$/); return m ? +m[1] : 0; }); let n = 1; while (used.includes(n)) n++; state.groups.push({ id: state.gid++, name: 'Concept ' + n, on: true, open: true, swapped: false }); renderGroups(); debouncedSave(); };
+window.delGrp = id => { if (state.groups.length < 2) return; [...state.items.values()].filter(i => i.zone === `pos-${id}` || i.zone === `neg-${id}`).forEach(i => { i.zone = 'pool'; }); state.groups = state.groups.filter(g => g.id !== id); renderGroups(); updateCounts(); debouncedSave(); };
+window.togGrp = (id, v) => { state.groups.find(g => g.id === id).on = v; renderGroups(); debouncedSave(); };
+window.togColl = id => { state.groups.find(x => x.id === id).open ^= 1; renderGroups(); };
+window.swapGrp = id => { state.groups.find(g => g.id === id).swapped ^= 1; renderGroups(); debouncedSave(); };
+
+// ===== Calculate Rankings =====
+
+function calculateConceptVector(pos, neg) {
+  if (!pos.length && !neg.length) return null;
+  if (!neg.length) return normVec(centroid(pos));
+  if (!pos.length) return normVec(centroid(neg).map(x => -x));
+  
+  const cPos = centroid(pos);
+  const cNeg = centroid(neg);
+  return normVec(cPos.map((val, i) => val - cNeg[i]));
+}
+
+$('calculate-btn').onclick = () => {
+  const showAll = $('filter-all').checked;
+  const cands = [...state.items.values()].filter(i => i.embedding && (showAll || i.zone === 'pool'));
+  if (!cands.length) { alert('No embedded items in pool to rank!'); return; }
+  
+  const validGrps = state.groups.filter(g => g.on && [...state.items.values()].some(i => (i.zone === `pos-${g.id}` || i.zone === `neg-${g.id}`) && i.embedding));
+  if (!validGrps.length) { alert('Add items to at least one enabled concept group.'); return; }
+  
+  const cVecs = {}, rawGrp = {};
+  validGrps.forEach(g => { 
+    let pos = [...state.items.values()].filter(i => i.zone === `pos-${g.id}` && i.embedding); 
+    let neg = [...state.items.values()].filter(i => i.zone === `neg-${g.id}` && i.embedding); 
+    if (g.swapped) [pos, neg] = [neg, pos]; 
+    cVecs[g.id] = calculateConceptVector(pos, neg); 
+    rawGrp[g.id] = [];
+  });
+  
+  cands.forEach(item => { 
+    item._raw = {}; 
+    validGrps.forEach(g => { 
+      const sc = dot(item.embedding, cVecs[g.id]); 
+      item._raw[g.id] = sc; 
+      rawGrp[g.id].push(sc); 
+    }); 
+  });
+  
+  const scales = {}, offsets = {};
+  validGrps.forEach(g => { 
+    let pos = [...state.items.values()].filter(i => i.zone === `pos-${g.id}` && i.embedding); 
+    let neg = [...state.items.values()].filter(i => i.zone === `neg-${g.id}` && i.embedding); 
+    if (g.swapped) [pos, neg] = [neg, pos]; 
+    
+    const arr = rawGrp[g.id]; 
+    const poolMean = arr.reduce((a, b) => a + b, 0) / arr.length; 
+    
+    // Calculate exact midpoint offset between the POS and NEG centroids so a score of 0.0 is exactly perfectly neutral
+    if (pos.length && neg.length) {
+      const cPos = centroid(pos);
+      const cNeg = centroid(neg);
+      const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
+      offsets[g.id] = dot(mid, cVecs[g.id]);
+    } else {
+      offsets[g.id] = poolMean; // Fallback to pool mean if only one pole is provided
+    }
+    
+    // Standardize to a standard deviation of 0.5 based on the variance of the overall pool
+    const variance = arr.reduce((a, v) => a + Math.pow(v - poolMean, 2), 0) / arr.length; 
+    const std = Math.sqrt(variance) || 1; 
+    scales[g.id] = 0.5 / std; 
+  });
+  
+  const agg = $('agg-method').value;
+  const results = cands.map(item => { 
+    const gScores = {}; let arr =[]; 
+    validGrps.forEach(g => { 
+      const scaled = (item._raw[g.id] - offsets[g.id]) * scales[g.id]; 
+      gScores[g.id] = scaled; 
+      arr.push(scaled); 
+    }); 
+    let score = 0; 
+    if (agg === 'avg') score = arr.reduce((a, b) => a + b, 0) / arr.length; 
+    else if (agg === 'max') score = Math.max(...arr); 
+    else if (agg === 'min') score = Math.min(...arr); 
+    return { ...item, score, gScores }; 
+  });
+  
+  const metaStr = validGrps.length > 1 ? `${agg.toUpperCase()} of ${validGrps.length} groups` : validGrps[0].name;
+  renderResults(results.sort((a, b) => b.score - a.score), metaStr);
+};
+
+// ===== Render Results =====
+function renderResults(data, meta) {
+  state.lastResults = data; $('results-section').classList.remove('hidden'); $('result-meta').textContent = meta || '';
+  const max = Math.max(...data.map(d => d.score)); const min = Math.min(...data.map(d => d.score)); const range = max - min || 1;
+  
+  $('results-content').innerHTML = data.map((item, i) => {
+    const n = (item.score - min) / range;
+    const tt = item.gScores ? Object.entries(item.gScores).map(([id, s]) => { const g = state.groups.find(x => x.id == id); return `${g?.name || '?'}${g?.swapped ? ' ⇄' : ''}: ${s.toFixed(4)}`; }).join('\n') : '';
+    const icon = TYPE_ICONS[item.type] || TYPE_ICONS[item.partTypes?.[0]] || '📎';
+    const rawLabel = item.type === 'text' ? item.content : (item.filename || item.content || item.type || ''); 
+    const esc = escHtml(rawLabel);
+    
+    let visual = '';
+    if (item.thumbnail) { visual = `<img src="${item.thumbnail}" class="w-16 h-16 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500 bg-gray-800/50" onclick="showPreview(${item.id})" title="${esc}">`; }
+    else { visual = `<div class="w-16 h-16 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">${icon}</div>`; }
+    
+    let labelHtml = '';
+    if (item.type === 'text') {
+      labelHtml = `<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1 group-open:text-blue-300"><span class="truncate line-clamp-1 flex-1">${esc}</span><button onclick="editItem(${item.id});event.preventDefault();" class="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded transition">Edit</button><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 hidden group-open:block">▲</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${esc}</div></details>`;
+    } else {
+      const extra =[];
+      if (item.partCount > 1) extra.push(`<span class="text-xs bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded">${item.partCount} parts</span>`);
+      if (item.hasAudio) extra.push('<span class="text-xs bg-green-900/50 text-green-300 px-1.5 py-0.5 rounded">🔊 Audio</span>');
+      if (item.duration) extra.push(`<span class="text-xs text-gray-500">${formatDuration(item.duration)}</span>`);
+      labelHtml = `<div class="text-sm font-medium truncate mb-1 flex items-center gap-2 flex-wrap" title="${esc}"><span class="text-xs bg-gray-700 px-1.5 py-0.5 rounded uppercase font-bold text-gray-400">${item.type}</span>${esc}${extra.join('')}</div>`;
+    }
+    
+    // Updated score coloring: item.score > 0 indicates mathematically positive alignment
+    return `<div class="flex items-center gap-4 bg-gray-700/50 p-3 rounded-xl border border-gray-600">
+      <div class="text-xl font-black text-gray-500 w-8 text-center">${i + 1}</div>${visual}
+      <div class="flex-1 min-w-0">${labelHtml}<div class="flex items-center gap-3">
+        <div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n * 100}%"></div></div>
+        <div class="score-cell font-mono text-lg ${item.score > 0 ? 'text-green-400' : 'text-yellow-400'}">${item.score > 0 ? '+' : ''}${item.score.toFixed(4)}${tt ? `<div class="score-tooltip font-mono">${tt}</div>` : ''}</div>
+      </div></div></div>`;
+  }).join('');
+  $('results-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+window.copyAllResults = () => {
+  if (!state.lastResults.length) return;
+  const txt = state.lastResults.map((r, i) => `Rank: ${i + 1}\nScore: ${r.score.toFixed(4)}\n[${r.type.toUpperCase()}] ${r.type === 'text' ? r.content : (r.filename || r.type)}`).join('\n\n\n');
+  navigator.clipboard.writeText(txt).then(() => { const b = $('copy-all-btn'), o = b.innerHTML; b.innerHTML = '✅ Copied!'; setTimeout(() => b.innerHTML = o, 2000); });
+};
+
+// ===== Share =====
+window.openShareModal = () => {
+  const items =[...state.items.values()];
+  if (!items.length) { alert('No items to share!'); return; }
+  const meta = getProjMeta(), cur = meta.find(p => p.id === currentProjId);
+  const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.onclick = e => { if (e.target === bg) bg.remove(); };
+  
+  let grpHtml = state.groups.map(g => { 
+    const pn = items.filter(i => i.zone === `pos-${g.id}` && i.embedding).length; 
+    const nn = items.filter(i => i.zone === `neg-${g.id}` && i.embedding).length; 
+    return `<label class="flex items-center gap-2 text-sm"><input type="checkbox" checked data-gid="${g.id}" class="share-grp accent-purple-500"><span class="flex-1">${escHtml(g.name)} <span class="text-gray-500">(+${pn} -${nn})</span></span></label>`; 
+  }).join('');
+  
+  bg.innerHTML = `<div class="modal-box space-y-4">
+    <h3 class="text-lg font-bold">📤 Share Project</h3>
+    <p class="text-xs text-gray-400">Note: Only text items and pre-computed embeddings can be shared via URL. File content cannot be included in share links.</p>
+    <div><label class="text-xs font-bold text-gray-400 uppercase">Project Name</label><input id="share-name" class="w-full bg-gray-700 p-2 rounded border border-gray-600 mt-1 text-sm outline-none" value="${escHtml(cur?.name || 'Shared Project')}"></div>
+    <div><label class="text-xs font-bold text-gray-400 uppercase">Concepts to Share</label><div class="space-y-1 mt-1">${grpHtml}</div></div>
+    <div class="space-y-1"><label class="text-xs font-bold text-gray-400 uppercase">Include</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="share-texts" checked class="accent-purple-500">Text items</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="share-embeds" class="accent-purple-500">Pre-computed embeddings <span class="text-gray-500 text-xs">(larger URL)</span></label>
+    </div>
+    <div class="bg-gray-800 rounded p-3 text-xs space-y-1">
+      <div class="flex justify-between"><span>Estimated URL size:</span><span id="share-size" class="font-mono">-</span></div>
+      <div class="h-2 bg-gray-900 rounded-full overflow-hidden"><div id="share-bar" class="h-full bg-green-500 transition-all" style="width:0"></div></div>
+      <div id="share-warn" class="text-yellow-400 hidden">⚠️ URL may be too long for some browsers (>32KB)</div>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button onclick="this.closest('.modal-bg').remove()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button>
+      <button id="share-go" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-bold">📋 Copy Link</button>
+    </div></div>`;
+  document.body.appendChild(bg);
+  
+  const calc = () => { 
+    const d = buildShareData(bg); 
+    if (!d) { $('share-size').textContent = 'N/A'; return; } 
+    const url = location.origin + location.pathname + '?d=' + LZString.compressToEncodedURIComponent(JSON.stringify(d)); 
+    const kb = (url.length / 1024).toFixed(1); $('share-size').textContent = kb + 'KB'; 
+    const pct = Math.min(url.length / 65000 * 100, 100); 
+    $('share-bar').style.width = pct + '%'; 
+    $('share-bar').className = 'h-full transition-all ' + (pct > 50 ? pct > 80 ? 'bg-red-500' : 'bg-yellow-500' : 'bg-green-500'); 
+    $('share-warn').classList.toggle('hidden', url.length < 32000); 
+  };
+  bg.querySelectorAll('input').forEach(i => i.onchange = calc); calc();
+  
+  bg.querySelector('#share-go').onclick = async () => { 
+    const d = buildShareData(bg); 
+    if (!d) { alert('Nothing selected'); return; } 
+    const url = location.origin + location.pathname + '?d=' + LZString.compressToEncodedURIComponent(JSON.stringify(d)); 
+    await navigator.clipboard.writeText(url); 
+    bg.querySelector('#share-go').textContent = '✅ Copied!'; 
+    setTimeout(() => bg.remove(), 1200); 
+  };
+};
+
+function buildShareData(modal) {
+  const gids = [...modal.querySelectorAll('.share-grp:checked')].map(e => +e.dataset.gid); if (!gids.length) return null;
+  const texts = modal.querySelector('#share-texts').checked; const embeds = modal.querySelector('#share-embeds').checked;
+  const name = modal.querySelector('#share-name').value.trim() || 'Shared';
+  const selGroups = state.groups.filter(g => gids.includes(g.id));
+  const selItems = texts ? [...state.items.values()].filter(i => { if (i.type !== 'text') return false; if (i.zone === 'pool') return true; return gids.some(id => i.zone === `pos-${id}` || i.zone === `neg-${id}`); }) :[]; 
+  const d = { n: name, g: selGroups.map(g => ({ id: g.id, name: g.name, on: g.on, open: g.open, swapped: g.swapped })) };
+  if (texts) { d.i = selItems.map(x => { const o = { c: x.content, z: x.zone, t: x.type }; if (embeds && x.embedding) o.e = x.embedding.map(v => +v.toFixed(5)); return o; }); }
+  return d;
+}
+
+async function loadFromURL() {
+  const p = new URLSearchParams(location.search), d = p.get('d'); if (!d) return;
+  try {
+    const c = JSON.parse(LZString.decompressFromEncodedURIComponent(d));
+    const meta = getProjMeta(), projName = uniqueName(c.n || 'Shared', meta), id = 'p_' + Date.now();
+    meta.push({ id, name: projName }); setProjMeta(meta);
+    if (currentProjId) await saveToDB(); currentProjId = id; resetState();
+    document.querySelectorAll('.item-card').forEach(e => e.remove());
+    
+    if (c.g) { state.groups = c.g.map(g => ({ ...g, swapped: g.swapped || false })); state.gid = Math.max(...c.g.map(g => g.id)) + 1; }
+    if (c.i) { 
+      for (const x of c.i) { 
+        const item = { id: state.nextId++, type: x.t || 'text', content: x.c, thumbnail: null, filename: null, mimeType: 'text/plain', embedding: x.e || null, zone: x.z || 'pool' }; 
+        state.items.set(item.id, item); 
+      } 
+    }
+    for (const [, item] of state.items) { if (!item.embedding && item.type === 'text') { enqueueEmbed({ itemId: item.id, parts: [{ text: item.content }] }); } }
+    await saveToDB(); history.replaceState(null, '', location.pathname);
+  } catch (e) { console.error('Share load error', e); }
+}
+
+// ===== File Upload Handling =====
+function setupFileUpload() {
+  const zone = $('file-upload-zone'); const input = $('file-input');
+  
+  zone.ondragover = e => { e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); };
+  zone.ondragleave = e => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('drag-over'); };
+  
+  zone.ondrop = e => { 
+    e.preventDefault(); e.stopPropagation(); zone.classList.remove('drag-over'); 
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      handleFiles(Array.from(e.dataTransfer.files)); 
+    }
+  };
+  
+  input.onchange = e => { 
+    if (e.target && e.target.files && e.target.files.length) {
+      handleFiles(Array.from(e.target.files)); 
+    }
+    input.value = ''; 
+  };
+  
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files =[];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file') {
+        const file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      handleFiles(files);
+    }
+  });
+}
+
+async function handleFiles(files) {
+  for (const file of files) {
+    await stageFile(file);
+  }
+}
+
+// ===== Init =====
+async function init() {
+  let meta = getProjMeta();
+  if (!meta.length) { meta =[{ id: 'p_default', name: 'Default' }]; setProjMeta(meta); currentProjId = 'p_default'; }
+  else { currentProjId = meta[0].id; }
+  await loadFromDB(); await loadFromURL();
+  renderGroups(); updateCounts(); renderProjects(); setupFileUpload();
+}
+init();
+</script>
+</body>
+</html>

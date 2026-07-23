@@ -380,8 +380,8 @@ function calculateConceptVector(pos, neg) {
   if (!neg.length) return norm(centroid(pos));
   if (!pos.length) return norm(centroid(neg).map(x => -x));
   
-  const cPos = centroid(pos);
-  const cNeg = centroid(neg);
+  const cPos = norm(centroid(pos));
+  const cNeg = norm(centroid(neg));
   return norm(cPos.map((val, i) => val - cNeg[i]));
 }
 
@@ -470,11 +470,11 @@ window.calculateRankings=()=>{
     const poolMean = arr.reduce((a,b)=>a+b,0)/arr.length;
 
     if (pos.length && neg.length) {
-      const cPos = centroid(pos);
-      const cNeg = centroid(neg);
-      const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
-      offsets[g.id] = dot(mid, cVecs[g.id]);
-    } else {
+        const cPos = norm(centroid(pos));
+        const cNeg = norm(centroid(neg));
+        const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
+        offsets[g.id] = dot(mid, cVecs[g.id]);
+      } else {
       offsets[g.id] = poolMean;
     }
 

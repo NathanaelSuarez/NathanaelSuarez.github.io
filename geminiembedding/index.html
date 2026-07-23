@@ -978,8 +978,8 @@ function calculateConceptVector(pos, neg) {
   if (!neg.length) return normVec(centroid(pos));
   if (!pos.length) return normVec(centroid(neg).map(x => -x));
   
-  const cPos = centroid(pos);
-  const cNeg = centroid(neg);
+  const cPos = normVec(centroid(pos));
+  const cNeg = normVec(centroid(neg));
   return normVec(cPos.map((val, i) => val - cNeg[i]));
 }
 
@@ -1020,8 +1020,8 @@ $('calculate-btn').onclick = () => {
     
     // Calculate exact midpoint offset between the POS and NEG centroids so a score of 0.0 is exactly perfectly neutral
     if (pos.length && neg.length) {
-      const cPos = centroid(pos);
-      const cNeg = centroid(neg);
+      const cPos = normVec(centroid(pos));
+      const cNeg = normVec(centroid(neg));
       const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
       offsets[g.id] = dot(mid, cVecs[g.id]);
     } else {

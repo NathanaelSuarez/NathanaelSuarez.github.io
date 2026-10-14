@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!-- saved from url=(0044)https://nathanaelsuarez.github.io/nathanael/ -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nathanael Suarez's Page</title>
+
+    <style>
+        /* Import custom font */
+        @font-face {
+            font-family: 'NathanaelFont';
+            src: url('/files/NathanaelFont.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        /* Body background and text color */
+        body {
+            font-family: 'NathanaelFont', sans-serif;
+            text-align: center;
+            padding: 0px;
+            margin: 0;
+            color: #ff7dd4;
+            transition: background-image 1s ease-in-out, opacity 1s ease-in-out;
+            background-size: 100% 100%; /* Stretch the image to fit the screen */
+            background-position: center; /* Keep the focus centered */
+            background-repeat: no-repeat; /* Prevent tiling */
+            background-attachment: fixed; /* Keep the image static during scrolling */
+            height: 100vh; /* Use 100% of the viewport height */
+            width: 100vw; /* Use 100% of the viewport width */
+            overflow: hidden; /* Prevent scrollbars */
+        }
+
+        /* Wobbly font animation for the name */
+        @keyframes wobble {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(5deg); }
+            50% { transform: rotate(-5deg); }
+            75% { transform: rotate(3deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* Apply the wobbly animation */
+        h1 {
+            font-family: 'NathanaelFont', cursive;
+            font-size: 80pt;
+            color: #FF7DD4;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+            animation: wobble 1s infinite;
+            cursor: pointer;
+        }
+
+        /* Fancy font for the name */
+        .name {
+            font-family: 'NathanaelFont', cursive;
+            font-size: 5em;
+            color: #DD0000;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* A little more styling for the paragraph */
+        p {
+            font-size: 2.4em;
+            color: #555;
+        }
+
+        /* Button style */
+        button {
+            background-color: #FFD900;
+            color: white;
+            border: none;
+            padding: 30px 60px;
+            font-size: 2.4em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #e55347;
+        }
+
+        /* Make content editable element stand out */
+        .editable {
+            outline: none;
+            color: inherit;
+            background: transparent;
+            font-size: inherit;
+        }
+
+    </style>
+<style type="text/css" id="ctre_styles">
+			#ctre_wnd {
+				position: fixed; bottom: 0; right: 10px;
+				background: #fff; box-shadow: 0px 0px 40px rgba(0,0,0,0.15);
+				border-radius: 3px 3px 0 0;
+				z-index: 2147483647;
+			}
+
+			@media (prefers-color-scheme: dark) {
+				#ctre_wnd { background: #000; box-shadow: 0px 0px 40px rgba(255,255,255,0.15); }
+			}
+			</style></head>
+<body style="background-image: url(&quot;https://images.dog.ceo/breeds/pitbull/20190710_143021.jpg&quot;); opacity: 1;">
+
+    
+    <p class="name">Nathanael Suarez</p>
+    
+
+    
+
+    <script>
+        // Function to change the background image and fade it in
+        function changeBackgroundImage() {
+            fetch('https://dog.ceo/api/breeds/image/random')  // Fetch a random dog image
+                .then(response => response.json())  // Parse the JSON response
+                .then(data => {
+                    const imageURL = data.message;  // Extract the image URL from the response
+                    document.body.style.backgroundImage = `url(${imageURL})`;  // Set the background image
+                    document.body.style.opacity = 0;  // Set opacity to 0 for the fade effect
+                    setTimeout(() => {
+                        document.body.style.opacity = 1;  // Slowly fade in the background
+                    }, 100);
+                })
+                .catch(error => console.error('Error fetching dog image:', error));
+        }
+
+        // Change background image every 5 seconds
+        setInterval(changeBackgroundImage, 5000);
+
+        // Initial background change on page load
+        changeBackgroundImage();
+    </script>
+
+
+</body></html>

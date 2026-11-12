@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Embedding Explorer (MobileCLIP2)</title>
+<title>AI Embedding Explorer (SigLIP 2 Full Precision)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 .item-card{background:#374151;border-radius:8px;padding:8px;cursor:grab;transition:.2s;user-select:none;display:inline-flex;flex-direction:column;align-items:center;gap:4px;position:relative;max-width:140px}
@@ -57,8 +57,8 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 <body class="bg-gray-900 text-white min-h-screen p-4">
 <div id="loading-overlay" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-50 p-6 text-center">
   <div class="spinner"></div>
-  <p id="loading-text" class="mt-4 text-lg font-bold">Initializing MobileCLIP2 Model...</p>
-  <p class="text-gray-400 text-sm mb-4">First load downloads ~136MB (cached after)</p>
+  <p id="loading-text" class="mt-4 text-lg font-bold">Initializing SigLIP 2 Model (Full Precision)...</p>
+  <p class="text-gray-400 text-sm mb-4">First load downloads ~372MB (cached after)</p>
   <div class="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mt-2"><div id="progress-bar" class="h-full bg-blue-600 w-0 transition-all duration-300"></div></div>
 </div>
 
@@ -123,7 +123,7 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
   </div>
   
   <footer class="mt-12 mb-8 text-center text-gray-500 text-xs space-y-1">
-    <p>Powered by MobileCLIP2 via Transformers.js</p>
+    <p>Powered by SigLIP 2 (siglip2-base-patch16-224 FP32) via Transformers.js</p>
     <p class="flex items-center justify-center gap-1">
       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
       Files are processed locally in your browser. No data is sent to a server.
@@ -163,217 +163,374 @@ button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(1)}
 </div>
 
 <script type="module">
-import{AutoProcessor,CLIPVisionModelWithProjection,RawImage,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
-env.allowRemoteModels=true;env.allowLocalModels=false;
+import { AutoProcessor, SiglipVisionModel, RawImage, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2';
+env.allowRemoteModels = true;
+env.allowLocalModels = false;
 
-document.addEventListener('mousedown',e=>{if(e.detail>1&&!['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))e.preventDefault()});
+document.addEventListener('mousedown', e => {
+  if (e.detail > 1 && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) e.preventDefault();
+});
 
-const $=id=>document.getElementById(id);
-window.$=$;
-const state={
-  items:new Map(),nextId:0,models:{},lastResults:[],
-  groups:[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],gid:1,
-  origFiles:new Map()
+const $ = id => document.getElementById(id);
+window.$ = $;
+const state = {
+  items: new Map(),
+  nextId: 0,
+  models: {},
+  lastResults: [],
+  groups: [{ id: 0, name: 'Concept 1', on: true, open: true, swapped: false }],
+  gid: 1,
+  origFiles: new Map()
 };
-window.appState=state;
+window.appState = state;
 
-const BATCH_SIZE=4;
-let pendingItems=[];
-let batchRunning=false;
+const BATCH_SIZE = 4;
+let pendingItems = [];
+let batchRunning = false;
 
-const yieldToMain=()=>new Promise(r=>setTimeout(r,0));
+const yieldToMain = () => new Promise(r => setTimeout(r, 0));
 
-function updateEmbedStatus(){
-  const n=pendingItems.length;
-  const el=$('embed-status');
-  if(n>0){el.classList.add('active');$('embed-status-text').textContent=`Embedding ${n} remaining...`}
-  else el.classList.remove('active');
+function updateEmbedStatus() {
+  const n = pendingItems.length;
+  const el = $('embed-status');
+  if (n > 0) {
+    el.classList.add('active');
+    $('embed-status-text').textContent = `Embedding ${n} remaining...`;
+  } else {
+    el.classList.remove('active');
+  }
 }
 
-async function processBatchQueue(){
-  if(batchRunning)return;
-  batchRunning=true;
-  while(pendingItems.length>0){
+async function processBatchQueue() {
+  if (batchRunning) return;
+  batchRunning = true;
+  while (pendingItems.length > 0) {
     updateEmbedStatus();
-    const batch=pendingItems.splice(0,BATCH_SIZE);
-    const imgBatch=batch.filter(b=>b.item.type==='image'&&state.items.has(b.item.id));
-    const txtBatch=batch.filter(b=>b.item.type==='text'&&state.items.has(b.item.id));
+    const batch = pendingItems.splice(0, BATCH_SIZE);
+    const imgBatch = batch.filter(b => b.item.type === 'image' && state.items.has(b.item.id));
 
-    if(imgBatch.length>0){
-      try{
-        const images=await Promise.all(imgBatch.map(b=>RawImage.read(b.item.content)));
-        for(let i=0;i<imgBatch.length;i++){
-          const b=imgBatch[i];
-          if(!state.items.has(b.item.id))continue;
-          try{
-            const inputs=await state.models.processor(images[i]);
-            const output=await state.models.vision(inputs);
-            b.item.embedding=norm(Array.from(output.image_embeds.data));
-            const card=document.querySelector(`.item-card[data-id="${b.item.id}"]`);
+    if (imgBatch.length > 0) {
+      try {
+        const images = await Promise.all(imgBatch.map(b => RawImage.read(b.item.content)));
+        for (let i = 0; i < imgBatch.length; i++) {
+          const b = imgBatch[i];
+          if (!state.items.has(b.item.id)) continue;
+          try {
+            const inputs = await state.models.processor(images[i]);
+            const output = await state.models.vision(inputs);
+            const embedTensor = output.pooler_output || output.image_embeds || output[0];
+            b.item.embedding = norm(Array.from(embedTensor.data));
+            const card = document.querySelector(`.item-card[data-id="${b.item.id}"]`);
             card?.classList.remove('opacity-50');
-          }catch(e){console.error('img embed err',e)}
+          } catch (e) {
+            console.error('img embed err', e);
+          }
         }
-      }catch(e){console.error('batch img err',e)}
-    }
-
-    for(const b of txtBatch){
-      if(!state.items.has(b.item.id))continue;
-      // Text embedding disabled as text model is removed.
+      } catch (e) {
+        console.error('batch img err', e);
+      }
     }
 
     debouncedSave();
     await yieldToMain();
   }
   updateEmbedStatus();
-  batchRunning=false;
+  batchRunning = false;
 }
 
-function enqueueEmbed(item){
-  pendingItems.push({item});
+function enqueueEmbed(item) {
+  pendingItems.push({ item });
   updateEmbedStatus();
   processBatchQueue();
 }
 
-window.showPreview=(id)=>{
-  const item=state.items.get(id);
-  if(!item||item.type!=='image')return;
-  $('preview-filename').textContent=item.filename||'';$('preview-filename').style.display=item.filename?'block':'none';
-  const orig=state.origFiles.get(id);
-  if(orig){const r=new FileReader();r.onload=()=>{$('preview-img').src=r.result;$('preview-modal').classList.add('show')};r.readAsDataURL(orig)}
-  else{$('preview-img').src=item.content;$('preview-modal').classList.add('show')}
+window.showPreview = (id) => {
+  const item = state.items.get(id);
+  if (!item || item.type !== 'image') return;
+  $('preview-filename').textContent = item.filename || '';
+  $('preview-filename').style.display = item.filename ? 'block' : 'none';
+  const orig = state.origFiles.get(id);
+  if (orig) {
+    const r = new FileReader();
+    r.onload = () => {
+      $('preview-img').src = r.result;
+      $('preview-modal').classList.add('show');
+    };
+    r.readAsDataURL(orig);
+  } else {
+    $('preview-img').src = item.content;
+    $('preview-modal').classList.add('show');
+  }
 };
 
-window.copyResults=key=>{
-  const data=state[key];if(!data?.length)return;
-  const txt=data.map((item,i)=>`Rank: ${i+1}\nScore: ${item.score>0?'+':''}${item.score.toFixed(4)}\n[${item.type.toUpperCase()}] ${item.type==='text'?item.content:item.filename||'Image'}`).join('\n\n\n');
-  navigator.clipboard.writeText(txt).then(()=>{const btn=event.target;const o=btn.innerHTML;btn.innerHTML='✅ Copied!';setTimeout(()=>btn.innerHTML=o,2000)});
+window.copyResults = key => {
+  const data = state[key];
+  if (!data?.length) return;
+  const txt = data.map((item, i) => `Rank: ${i + 1}\nScore: ${item.score > 0 ? '+' : ''}${item.score.toFixed(4)}\n[${item.type.toUpperCase()}] ${item.type === 'text' ? item.content : item.filename || 'Image'}`).join('\n\n\n');
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = event.target;
+    const o = btn.innerHTML;
+    btn.innerHTML = '✅ Copied!';
+    setTimeout(() => btn.innerHTML = o, 2000);
+  });
 };
 
-const updateProgress=(p,t)=>{$('progress-bar').style.width=p+'%';if(t)$('loading-text').textContent=t};
+const updateProgress = (p, t) => {
+  $('progress-bar').style.width = p + '%';
+  if (t) $('loading-text').textContent = t;
+};
 
-const DB_NAME='SigLIPExplorerDB',DB_VERSION=8;
-const dbPromise=new Promise((res,rej)=>{
-  const r=indexedDB.open(DB_NAME,DB_VERSION);
-  r.onerror=e=>rej(e.target.error);
-  r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('appState'))db.createObjectStore('appState',{keyPath:'id'});};
-  r.onsuccess=e=>res(e.target.result);
+const DB_NAME = 'SigLIP2ExplorerDB', DB_VERSION = 1;
+const dbPromise = new Promise((res, rej) => {
+  const r = indexedDB.open(DB_NAME, DB_VERSION);
+  r.onerror = e => rej(e.target.error);
+  r.onupgradeneeded = e => {
+    const db = e.target.result;
+    if (!db.objectStoreNames.contains('appState')) db.createObjectStore('appState', { keyPath: 'id' });
+  };
+  r.onsuccess = e => res(e.target.result);
 });
 
-let saveTimer=null;
-function debouncedSave(){if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>{saveTimer=null;saveToDB()},500)}
-
-async function saveToDB(){
-  const db=await dbPromise,tx=db.transaction(['appState'],'readwrite'),s=tx.objectStore('appState');
-  s.put({id:'items',items:[...state.items.values()]});s.put({id:'groups',groups:state.groups,gid:state.gid});
+let saveTimer = null;
+function debouncedSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveToDB();
+  }, 500);
 }
 
-async function loadFromDB(){
-  const db=await dbPromise;
-  return new Promise(res=>{
-    const tx=db.transaction(['appState'],'readonly'),s=tx.objectStore('appState');
-    const rg=s.get('groups');
-    rg.onsuccess=()=>{
-      if(rg.result){state.groups=rg.result.groups.map(g=>({...g,swapped:g.swapped||false}));state.gid=rg.result.gid}
+async function saveToDB() {
+  const db = await dbPromise;
+  const tx = db.transaction(['appState'], 'readwrite');
+  const s = tx.objectStore('appState');
+  s.put({ id: 'items', items: [...state.items.values()] });
+  s.put({ id: 'groups', groups: state.groups, gid: state.gid });
+}
+
+async function loadFromDB() {
+  const db = await dbPromise;
+  return new Promise(res => {
+    const tx = db.transaction(['appState'], 'readonly');
+    const s = tx.objectStore('appState');
+    const rg = s.get('groups');
+    rg.onsuccess = () => {
+      if (rg.result) {
+        state.groups = rg.result.groups.map(g => ({ ...g, swapped: g.swapped || false }));
+        state.gid = rg.result.gid;
+      }
       renderGroups();
-      const r=s.get('items');
-      r.onsuccess=()=>{
-        if(r.result){r.result.items.forEach(i=>{state.items.set(i.id,i);createCardElement(i)});state.nextId=Math.max(0,...[...state.items.keys()])+1}
-        res()
+      const r = s.get('items');
+      r.onsuccess = () => {
+        if (r.result) {
+          r.result.items.forEach(i => {
+            if (i.embedding && i.embedding.length !== 768) {
+              i.embedding = null;
+            }
+            state.items.set(i.id, i);
+            createCardElement(i);
+            if (!i.embedding && i.type === 'image') {
+              enqueueEmbed(i);
+            }
+          });
+          state.nextId = Math.max(0, ...[...state.items.keys()]) + 1;
+        }
+        res();
       };
-      r.onerror=()=>res();
+      r.onerror = () => res();
     };
-    rg.onerror=()=>res();
+    rg.onerror = () => res();
   });
 }
 
-window.clearAllData=async()=>{
-  if(!confirm('Clear all data?'))return;
-  pendingItems=[];updateEmbedStatus();
-  state.items.clear();state.nextId=0;state.lastResults=[];state.origFiles.clear();
-  state.groups=[{id:0,name:'Concept 1',on:true,open:true,swapped:false}],state.gid=1;
-  document.querySelectorAll('.item-card').forEach(c=>c.remove());
+window.clearAllData = async () => {
+  if (!confirm('Clear all data?')) return;
+  pendingItems = [];
+  updateEmbedStatus();
+  state.items.clear();
+  state.nextId = 0;
+  state.lastResults = [];
+  state.origFiles.clear();
+  state.groups = [{ id: 0, name: 'Concept 1', on: true, open: true, swapped: false }];
+  state.gid = 1;
+  document.querySelectorAll('.item-card').forEach(c => c.remove());
   $('results-section').classList.add('hidden');
-  renderGroups();updateCounts();await saveToDB();
+  renderGroups();
+  updateCounts();
+  await saveToDB();
 };
 
-window.clearPoolOnly=async()=>{
-  if(!confirm('Clear only pool items?'))return;
-  [...state.items.values()].filter(i=>i.zone==='pool').forEach(i=>{state.items.delete(i.id);state.origFiles.delete(i.id);document.querySelector(`.item-card[data-id="${i.id}"]`)?.remove()});
-  pendingItems=pendingItems.filter(p=>state.items.has(p.item.id));updateEmbedStatus();
-  updateCounts();await saveToDB();
+window.clearPoolOnly = async () => {
+  if (!confirm('Clear only pool items?')) return;
+  [...state.items.values()].filter(i => i.zone === 'pool').forEach(i => {
+    state.items.delete(i.id);
+    state.origFiles.delete(i.id);
+    document.querySelector(`.item-card[data-id="${i.id}"]`)?.remove();
+  });
+  pendingItems = pendingItems.filter(p => state.items.has(p.item.id));
+  updateEmbedStatus();
+  updateCounts();
+  await saveToDB();
 };
 
-function makeCard(item){
-  const c=document.createElement('div');c.className='item-card'+(item.embedding?'':' opacity-50');c.draggable=true;c.dataset.id=item.id;
-  c.innerHTML=item.type==='image'?`<img src="${item.content}" onclick="showPreview(${item.id})"><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`:`<span>${item.content}</span><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`;
-  c.ondragstart=e=>e.dataTransfer.setData('id',item.id);return c;
+function makeCard(item) {
+  const c = document.createElement('div');
+  c.className = 'item-card' + (item.embedding ? '' : ' opacity-50');
+  c.draggable = true;
+  c.dataset.id = item.id;
+  c.innerHTML = item.type === 'image'
+    ? `<img src="${item.content}" onclick="showPreview(${item.id})"><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`
+    : `<span>${item.content}</span><div class="remove-btn" onclick="event.stopPropagation();removeItem(${item.id})">×</div>`;
+  c.ondragstart = e => e.dataTransfer.setData('id', item.id);
+  return c;
 }
 
 function renderGroups() {
   const existingCards = new Map();
   document.querySelectorAll('.item-card').forEach(c => existingCards.set(Number(c.dataset.id), c));
 
-  const frag=document.createDocumentFragment();
-  state.groups.forEach(g=>{
-    const div=document.createElement('div');div.className=`bg-gray-800 rounded-xl border border-gray-700${g.on?'':' opacity-50'}`;
-    const swapInd=g.swapped?'<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>':'';
-    div.innerHTML=`<div class="flex items-center gap-2 p-3 ${g.open?'':'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on?' checked':''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded" ondblclick="event.stopPropagation();renameGrp(${g.id},this)">${g.name}${swapInd}</span><button onclick="openTrainingModal(${g.id});event.stopPropagation()" class="text-[10px] bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded border border-purple-400 mr-2 font-bold shadow-sm transition">🧠 Train</button><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped?'bg-yellow-600':'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-2" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open?'▼':'▶'}</span>${state.groups.length>1?`<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>`:''}</div><div class="${g.open?'grid':'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped?'border-red-500':'border-green-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-red-400':'text-green-400'} font-bold">${g.swapped?'➖ Negative':'➕ Positive'}</span><input type="file" id="pf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('pf${g.id}').click()" class="${g.swapped?'bg-red-600':'bg-green-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped?'border-green-500':'border-red-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped?'text-green-400':'text-red-400'} font-bold">${g.swapped?'➕ Positive':'➖ Negative'}</span><input type="file" id="nf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('nf${g.id}').click()" class="${g.swapped?'bg-green-600':'bg-red-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
+  const frag = document.createDocumentFragment();
+  state.groups.forEach(g => {
+    const div = document.createElement('div');
+    div.className = `bg-gray-800 rounded-xl border border-gray-700${g.on ? '' : ' opacity-50'}`;
+    const swapInd = g.swapped ? '<span class="text-yellow-400 text-xs ml-1" title="Inverted">⇄</span>' : '';
+    div.innerHTML = `<div class="flex items-center gap-2 p-3 ${g.open ? '' : 'grp-collapsed'} cursor-pointer" onclick="togColl(${g.id})"><input type="checkbox"${g.on ? ' checked' : ''} class="accent-purple-500" onchange="togGrp(${g.id},this.checked)" onclick="event.stopPropagation()"><span class="grp-name font-bold flex-1 px-1 rounded" ondblclick="event.stopPropagation();renameGrp(${g.id},this)">${g.name}${swapInd}</span><button onclick="openTrainingModal(${g.id});event.stopPropagation()" class="text-[10px] bg-purple-600 hover:bg-purple-500 text-white px-2 py-0.5 rounded border border-purple-400 mr-2 font-bold shadow-sm transition">🧠 Train</button><button onclick="swapGrp(${g.id});event.stopPropagation()" class="text-[10px] ${g.swapped ? 'bg-yellow-600' : 'bg-gray-700'} hover:bg-gray-600 px-1.5 py-0.5 rounded border border-gray-500 mr-2" title="Invert concept">⇄</button><span class="text-gray-400 text-xs">${g.open ? '▼' : '▶'}</span>${state.groups.length > 1 ? `<span class="text-red-400 cursor-pointer px-2" onclick="delGrp(${g.id});event.stopPropagation()">×</span>` : ''}</div><div class="${g.open ? 'grid' : 'hidden'} grid-cols-2 gap-4 p-4 border-t border-gray-600"><div class="border-l-4 ${g.swapped ? 'border-red-500' : 'border-green-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped ? 'text-red-400' : 'text-green-400'} font-bold">${g.swapped ? '➖ Negative' : '➕ Positive'}</span><input type="file" id="pf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('pf${g.id}').click()" class="${g.swapped ? 'bg-red-600' : 'bg-green-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="pos-${g.id}"></div></div><div class="border-l-4 ${g.swapped ? 'border-green-500' : 'border-red-500'} pl-3"><div class="flex justify-between mb-2 text-sm"><span class="${g.swapped ? 'text-green-400' : 'text-red-400'} font-bold">${g.swapped ? '➕ Positive' : '➖ Negative'}</span><input type="file" id="nf${g.id}" accept="image/*" multiple hidden><button onclick="document.getElementById('nf${g.id}').click()" class="${g.swapped ? 'bg-green-600' : 'bg-red-600'} px-2 rounded text-xs">+</button></div><div class="drop-zone" data-zone="neg-${g.id}"></div></div></div>`;
     frag.appendChild(div);
   });
-  if(state.groups.length<10){const btn=document.createElement('button');btn.className='w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';btn.textContent=`+ Add Concept Group (${state.groups.length}/10)`;btn.onclick=addGrp;frag.appendChild(btn)}
+  if (state.groups.length < 10) {
+    const btn = document.createElement('button');
+    btn.className = 'w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg border border-dashed border-gray-600 text-sm';
+    btn.textContent = `+ Add Concept Group (${state.groups.length}/10)`;
+    btn.onclick = addGrp;
+    frag.appendChild(btn);
+  }
   
-  $('concept-groups').innerHTML='';
+  $('concept-groups').innerHTML = '';
   $('concept-groups').appendChild(frag);
 
-  [...state.items.values()].forEach(item=>{
+  [...state.items.values()].forEach(item => {
     let z = document.querySelector(`[data-zone="${item.zone}"]`);
     if (!z) { item.zone = 'pool'; z = $('items-pool'); }
     const card = existingCards.get(item.id) || makeCard(item);
     if (card.parentElement !== z) z.appendChild(card);
   });
 
-  document.querySelectorAll('.drop-zone').forEach(z=>{z.ondragover=e=>{e.preventDefault();z.classList.add('drag-over')};z.ondragleave=z.ondrop=e=>{z.classList.remove('drag-over');if(e.type==='drop'){e.preventDefault();const id=+e.dataTransfer.getData('id');if(!isNaN(id)&&state.items.has(id)){state.items.get(id).zone=z.dataset.zone;const c=document.querySelector(`.item-card[data-id="${id}"]`);if(c)z.appendChild(c);debouncedSave()}}}});
-  state.groups.forEach(g=>{const p=$(`pf${g.id}`),n=$(`nf${g.id}`);if(p)p.onchange=e=>upload(e.target.files,`pos-${g.id}`);if(n)n.onchange=e=>upload(e.target.files,`neg-${g.id}`)});
+  document.querySelectorAll('.drop-zone').forEach(z => {
+    z.ondragover = e => { e.preventDefault(); z.classList.add('drag-over'); };
+    z.ondragleave = z.ondrop = e => {
+      z.classList.remove('drag-over');
+      if (e.type === 'drop') {
+        e.preventDefault();
+        const id = +e.dataTransfer.getData('id');
+        if (!isNaN(id) && state.items.has(id)) {
+          state.items.get(id).zone = z.dataset.zone;
+          const c = document.querySelector(`.item-card[data-id="${id}"]`);
+          if (c) z.appendChild(c);
+          debouncedSave();
+        }
+      }
+    };
+  });
+  state.groups.forEach(g => {
+    const p = $(`pf${g.id}`), n = $(`nf${g.id}`);
+    if (p) p.onchange = e => upload(e.target.files, `pos-${g.id}`);
+    if (n) n.onchange = e => upload(e.target.files, `neg-${g.id}`);
+  });
 }
 
-window.renameGrp=(id,el)=>{const g=state.groups.find(x=>x.id===id);if(!g)return;const input=document.createElement('input');input.type='text';input.value=g.name;input.className='bg-gray-700 px-1 rounded text-sm w-24';input.onblur=input.onkeydown=e=>{if(e.type==='blur'||e.key==='Enter'){g.name=input.value.trim()||g.name;renderGroups();debouncedSave()}else if(e.key==='Escape')renderGroups()};el.innerHTML='';el.appendChild(input);input.focus();input.select()};
-window.addGrp=()=>{if(state.groups.length>=10)return;const used=state.groups.map(g=>{const m=g.name.match(/^Concept (\d+)$/);return m?+m[1]:0});let n=1;while(used.includes(n))n++;state.groups.push({id:state.gid++,name:'Concept '+n,on:true,open:true,swapped:false});renderGroups();debouncedSave()};
-window.delGrp=id=>{
-  if(state.groups.length<2)return;
-  [...state.items.values()].filter(i=>i.zone===`pos-${id}`||i.zone===`neg-${id}`).forEach(i=>{i.zone='pool';});
-  state.groups=state.groups.filter(g=>g.id!==id);
+window.renameGrp = (id, el) => {
+  const g = state.groups.find(x => x.id === id);
+  if (!g) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = g.name;
+  input.className = 'bg-gray-700 px-1 rounded text-sm w-24';
+  input.onblur = input.onkeydown = e => {
+    if (e.type === 'blur' || e.key === 'Enter') {
+      g.name = input.value.trim() || g.name;
+      renderGroups();
+      debouncedSave();
+    } else if (e.key === 'Escape') {
+      renderGroups();
+    }
+  };
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  input.select();
+};
+
+window.addGrp = () => {
+  if (state.groups.length >= 10) return;
+  const used = state.groups.map(g => {
+    const m = g.name.match(/^Concept (\d+)$/);
+    return m ? +m[1] : 0;
+  });
+  let n = 1;
+  while (used.includes(n)) n++;
+  state.groups.push({ id: state.gid++, name: 'Concept ' + n, on: true, open: true, swapped: false });
   renderGroups();
   debouncedSave();
 };
-window.togGrp=(id,v)=>{state.groups.find(g=>g.id===id).on=v;renderGroups();debouncedSave()};
-window.togColl=id=>{state.groups.find(x=>x.id===id).open^=1;renderGroups()};
-window.swapGrp=id=>{state.groups.find(g=>g.id===id).swapped^=1;renderGroups();debouncedSave()};
 
-async function compressImage(dataUrl){return new Promise(res=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas'),MAX=512;let w=img.width,h=img.height;if(w>h){if(w>MAX){h*=MAX/w;w=MAX}}else if(h>MAX){w*=MAX/h;h=MAX}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.8))};img.src=dataUrl})}
+window.delGrp = id => {
+  if (state.groups.length < 2) return;
+  [...state.items.values()].filter(i => i.zone === `pos-${id}` || i.zone === `neg-${id}`).forEach(i => { i.zone = 'pool'; });
+  state.groups = state.groups.filter(g => g.id !== id);
+  renderGroups();
+  debouncedSave();
+};
 
-function createCardElement(item){
-  (item.zone==='pool'?$('items-pool'):document.querySelector(`[data-zone="${item.zone}"]`)||$('items-pool')).appendChild(makeCard(item))
-}
-function updateCounts(){$('item-count').textContent=state.items.size+' items';document.querySelectorAll('.pool-placeholder').forEach(p=>p.style.display=state.items.size?'none':'block')}
+window.togGrp = (id, v) => { state.groups.find(g => g.id === id).on = v; renderGroups(); debouncedSave(); };
+window.togColl = id => { state.groups.find(x => x.id === id).open ^= 1; renderGroups(); };
+window.swapGrp = id => { state.groups.find(g => g.id === id).swapped ^= 1; renderGroups(); debouncedSave(); };
 
-async function init(){
-  const S='plhery/mobileclip2-onnx',device=navigator.gpu?'webgpu':'wasm';
-  updateProgress(10,"Loading Processor...");
-  state.models.processor=await AutoProcessor.from_pretrained(S,{config_file_name:'onnx/s2/preprocessor_config.json'});
-  updateProgress(30,"Loading Vision Model...");
-  state.models.vision=await CLIPVisionModelWithProjection.from_pretrained(S,{
-    device,
-    dtype:'fp32',
-    model_file_name:'s2/vision_model',
-    progress_callback:p=>p.status==='progress'&&updateProgress(30+p.progress*.7)
+async function compressImage(dataUrl) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'), MAX = 512;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else if (h > MAX) { w *= MAX / h; h = MAX; }
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = dataUrl;
   });
-  await loadFromDB();updateCounts();$('loading-overlay').remove();setupEvents();
+}
+
+function createCardElement(item) {
+  (item.zone === 'pool' ? $('items-pool') : document.querySelector(`[data-zone="${item.zone}"]`) || $('items-pool')).appendChild(makeCard(item));
+}
+
+function updateCounts() {
+  $('item-count').textContent = state.items.size + ' items';
+  document.querySelectorAll('.pool-placeholder').forEach(p => p.style.display = state.items.size ? 'none' : 'block');
+}
+
+async function init() {
+  const S = 'onnx-community/siglip2-base-patch16-224-ONNX';
+  const device = navigator.gpu ? 'webgpu' : 'wasm';
+  updateProgress(10, "Loading SigLIP 2 Processor...");
+  state.models.processor = await AutoProcessor.from_pretrained(S);
+  updateProgress(30, "Loading SigLIP 2 Vision Model (FP32)...");
+  state.models.vision = await SiglipVisionModel.from_pretrained(S, {
+    device,
+    dtype: 'fp32',
+    model_file_name: 'vision_model',
+    progress_callback: p => p.status === 'progress' && updateProgress(30 + p.progress * .7)
+  });
+  await loadFromDB();
+  updateCounts();
+  $('loading-overlay').remove();
+  setupEvents();
 }
 
 // ===== Math Core Functions =====
-const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
-const norm=v=>{const m=Math.hypot(...v);return v.map(x=>x/(m||1))};
-const centroid=arr=>arr[0].embedding.map((_,i)=>arr.reduce((s,x)=>s+x.embedding[i],0)/arr.length);
+const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
+const norm = v => { const m = Math.hypot(...v); return v.map(x => x / (m || 1)); };
+const centroid = arr => arr[0].embedding.map((_, i) => arr.reduce((s, x) => s + x.embedding[i], 0) / arr.length);
 
 function calculateConceptVector(pos, neg) {
   if (!pos.length && !neg.length) return null;
@@ -385,17 +542,33 @@ function calculateConceptVector(pos, neg) {
   return norm(cPos.map((val, i) => val - cNeg[i]));
 }
 
-async function addItem(type,content,zone='pool',origFile=null,filename=null){
-  const item={id:state.nextId++,type,content,embedding:null,zone,filename};
-  if(type==='image')item.content=await compressImage(content);
-  if(origFile)state.origFiles.set(item.id,origFile);
-  state.items.set(item.id,item);createCardElement(item);updateCounts();
+async function addItem(type, content, zone = 'pool', origFile = null, filename = null) {
+  const item = { id: state.nextId++, type, content, embedding: null, zone, filename };
+  if (type === 'image') item.content = await compressImage(content);
+  if (origFile) state.origFiles.set(item.id, origFile);
+  state.items.set(item.id, item);
+  createCardElement(item);
+  updateCounts();
   enqueueEmbed(item);
   return item;
 }
 
-window.addItem=addItem;
-window.removeItem=id=>{const item=state.items.get(id);if(!item)return;const card=document.querySelector(`.item-card[data-id="${id}"]`);if(item.zone!=='pool'){item.zone='pool';$('items-pool').appendChild(card)}else{state.items.delete(id);state.origFiles.delete(id);if(card)card.remove()}updateCounts();debouncedSave()};
+window.addItem = addItem;
+window.removeItem = id => {
+  const item = state.items.get(id);
+  if (!item) return;
+  const card = document.querySelector(`.item-card[data-id="${id}"]`);
+  if (item.zone !== 'pool') {
+    item.zone = 'pool';
+    $('items-pool').appendChild(card);
+  } else {
+    state.items.delete(id);
+    state.origFiles.delete(id);
+    if (card) card.remove();
+  }
+  updateCounts();
+  debouncedSave();
+};
 
 const upload = async (files, zone) => {
   for (const f of files) {
@@ -433,95 +606,113 @@ const upload = async (files, zone) => {
   }
 };
 
-window.calculateRankings=()=>{
-  const showAll=$('filter-all').checked;
-  const allItems=[...state.items.values()].filter(i=>i.embedding);
-  const cands=allItems.filter(i=>showAll||i.zone==='pool');
-  if(!cands.length)throw new Error('No embedded items to rank!');
+window.calculateRankings = () => {
+  const showAll = $('filter-all').checked;
+  const allItems = [...state.items.values()].filter(i => i.embedding);
+  const cands = allItems.filter(i => showAll || i.zone === 'pool');
+  if (!cands.length) throw new Error('No embedded items to rank!');
 
-  const validGrps=state.groups.filter(g=>g.on&&allItems.some(i=>(i.zone===`pos-${g.id}`||i.zone===`neg-${g.id}`)));
-  if(!validGrps.length)throw new Error('Add items to at least one enabled group');
+  const validGrps = state.groups.filter(g => g.on && allItems.some(i => (i.zone === `pos-${g.id}` || i.zone === `neg-${g.id}`)));
+  if (!validGrps.length) throw new Error('Add items to at least one enabled group');
 
-  const cVecs={}, rawGrp={};
-  validGrps.forEach(g=>{
-    let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
-    let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
-    if(g.swapped)[pos,neg]=[neg,pos];
-    cVecs[g.id]=calculateConceptVector(pos, neg);
-    rawGrp[g.id]=[];
+  const cVecs = {}, rawGrp = {};
+  validGrps.forEach(g => {
+    let pos = allItems.filter(i => i.zone === `pos-${g.id}`);
+    let neg = allItems.filter(i => i.zone === `neg-${g.id}`);
+    if (g.swapped) [pos, neg] = [neg, pos];
+    cVecs[g.id] = calculateConceptVector(pos, neg);
+    rawGrp[g.id] = [];
   });
 
-  allItems.forEach(item=>{
-    item._raw={};
-    validGrps.forEach(g=>{
-      const sc=dot(item.embedding, cVecs[g.id]);
-      item._raw[g.id]=sc;
+  allItems.forEach(item => {
+    item._raw = {};
+    validGrps.forEach(g => {
+      const sc = dot(item.embedding, cVecs[g.id]);
+      item._raw[g.id] = sc;
       rawGrp[g.id].push(sc);
     });
   });
 
-  const scales={}, offsets={};
-  validGrps.forEach(g=>{
-    let pos=allItems.filter(i=>i.zone===`pos-${g.id}`);
-    let neg=allItems.filter(i=>i.zone===`neg-${g.id}`);
-    if(g.swapped)[pos,neg]=[neg,pos];
+  const scales = {}, offsets = {};
+  validGrps.forEach(g => {
+    let pos = allItems.filter(i => i.zone === `pos-${g.id}`);
+    let neg = allItems.filter(i => i.zone === `neg-${g.id}`);
+    if (g.swapped) [pos, neg] = [neg, pos];
 
-    const arr=rawGrp[g.id];
-    const poolMean = arr.reduce((a,b)=>a+b,0)/arr.length;
+    const arr = rawGrp[g.id];
+    const poolMean = arr.reduce((a, b) => a + b, 0) / arr.length;
 
     if (pos.length && neg.length) {
-        const cPos = norm(centroid(pos));
-        const cNeg = norm(centroid(neg));
-        const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
-        offsets[g.id] = dot(mid, cVecs[g.id]);
-      } else {
+      const cPos = norm(centroid(pos));
+      const cNeg = norm(centroid(neg));
+      const mid = cPos.map((val, i) => (val + cNeg[i]) / 2);
+      offsets[g.id] = dot(mid, cVecs[g.id]);
+    } else {
       offsets[g.id] = poolMean;
     }
 
-    const variance = arr.reduce((a,v)=>a+Math.pow(v-poolMean, 2),0)/arr.length;
+    const variance = arr.reduce((a, v) => a + Math.pow(v - poolMean, 2), 0) / arr.length;
     const std = Math.max(Math.sqrt(variance), 0.0001);
-    scales[g.id] = 0.5/std;
+    scales[g.id] = 0.5 / std;
   });
 
-  const agg=$('agg-method').value;
-  const results=cands.map(item=>{
-    const gScores={}; let arr=[];
-    validGrps.forEach(g=>{
-      const scaled=(item._raw[g.id] - offsets[g.id]) * scales[g.id];
-      gScores[g.id]=scaled; arr.push(scaled);
+  const agg = $('agg-method').value;
+  const results = cands.map(item => {
+    const gScores = {};
+    let arr = [];
+    validGrps.forEach(g => {
+      const scaled = (item._raw[g.id] - offsets[g.id]) * scales[g.id];
+      gScores[g.id] = scaled;
+      arr.push(scaled);
     });
-    let score=0;
-    if(agg==='avg')score=arr.reduce((a,b)=>a+b,0)/arr.length;
-    else if(agg==='max')score=Math.max(...arr);
-    else if(agg==='min')score=Math.min(...arr);
-    return{...item,score,rawScores:gScores};
+    let score = 0;
+    if (agg === 'avg') score = arr.reduce((a, b) => a + b, 0) / arr.length;
+    else if (agg === 'max') score = Math.max(...arr);
+    else if (agg === 'min') score = Math.min(...arr);
+    return { ...item, score, rawScores: gScores };
   });
 
-  const aggLabels={avg:'AVERAGE',max:'MAXIMUM',min:'MINIMUM'};
-  const metaStr=validGrps.length>1?`${aggLabels[agg]} of ${validGrps.length} groups`:validGrps[0].name;
-  return{results:results.sort((a,b)=>b.score-a.score), meta:metaStr};
+  const aggLabels = { avg: 'AVERAGE', max: 'MAXIMUM', min: 'MINIMUM' };
+  const metaStr = validGrps.length > 1 ? `${aggLabels[agg]} of ${validGrps.length} groups` : validGrps[0].name;
+  return { results: results.sort((a, b) => b.score - a.score), meta: metaStr };
 };
 
-function setupEvents(){
+function setupEvents() {
   const addTxtBtn = $('add-text-btn');
   if (addTxtBtn) {
-    addTxtBtn.onclick=()=>{const v=$('text-input').value.trim();if(v){addItem('text',v);$('text-input').value=''}};
-    $('text-input').onkeydown=e=>{if(e.key==='Enter')addTxtBtn.click()};
+    addTxtBtn.onclick = () => {
+      const v = $('text-input').value.trim();
+      if (v) { addItem('text', v); $('text-input').value = ''; }
+    };
+    $('text-input').onkeydown = e => { if (e.key === 'Enter') addTxtBtn.click(); };
   }
-  $('image-input').onchange=e=>upload(e.target.files,'pool');
-  $('calculate-btn').onclick=()=>{try{const{results,meta}=window.calculateRankings();render(results,meta)}catch(e){alert(e.message)}};
+  $('image-input').onchange = e => upload(e.target.files, 'pool');
+  $('calculate-btn').onclick = () => {
+    try {
+      const { results, meta } = window.calculateRankings();
+      render(results, meta);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
 }
 
-function render(data,meta,cfg={}){
-  const{sec='results-section',con='results-content',met='result-meta',stKey='lastResults',ttFn}=cfg;
-  const tooltipFn=ttFn||(item=>item.rawScores?Object.entries(item.rawScores).map(([id,s])=>{const g=state.groups.find(x=>x.id==id);return`${g?.name||'?'}${g?.swapped?' ⇄':''}: ${s.toFixed(4)}`}).join('\n'):'');
-  state[stKey]=data;$(sec).classList.remove('hidden');$(met).textContent=meta;
-  const max=Math.max(...data.map(d=>d.score)),min=Math.min(...data.map(d=>d.score)),range=max-min||1;
-  $(con).innerHTML=data.map((item,i)=>{
-    const n=(item.score-min)/range,tt=tooltipFn(item);
-    const lbl=item.type==='text'?item.content:(item.filename||'Image'),esc=lbl.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return`<div class="flex items-center gap-3 bg-gray-700/50 p-2 rounded-xl border border-gray-600"><div class="text-xl font-black text-gray-500 w-8 text-center">${i+1}</div>${item.type==='image'?`<img src="${item.content}" class="w-20 h-20 object-contain rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500 bg-gray-800/50" onclick="showPreview(${item.id})" title="${esc}">`:`<div class="w-20 h-20 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>`}<div class="flex-1 min-w-0">${item.type==='text'?`<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1"><span class="truncate flex-1">${item.content}</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>`:`<div class="text-sm font-medium truncate mb-1" title="${esc}">${esc}</div>`}<div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n*100}%"></div></div><div class="score-cell font-mono text-lg ${item.score>0?'text-green-400':'text-yellow-400'}">${item.score>0?'+':''}${item.score.toFixed(4)}${tt?`<div class="score-tooltip">${tt}</div>`:''}</div></div></div></div>`}).join('');
-  $(sec).scrollIntoView({behavior:'smooth'});
+function render(data, meta, cfg = {}) {
+  const { sec = 'results-section', con = 'results-content', met = 'result-meta', stKey = 'lastResults', ttFn } = cfg;
+  const tooltipFn = ttFn || (item => item.rawScores ? Object.entries(item.rawScores).map(([id, s]) => {
+    const g = state.groups.find(x => x.id == id);
+    return `${g?.name || '?'}${g?.swapped ? ' ⇄' : ''}: ${s.toFixed(4)}`;
+  }).join('\n') : '');
+  state[stKey] = data;
+  $(sec).classList.remove('hidden');
+  $(met).textContent = meta;
+  const max = Math.max(...data.map(d => d.score)), min = Math.min(...data.map(d => d.score)), range = max - min || 1;
+  $(con).innerHTML = data.map((item, i) => {
+    const n = (item.score - min) / range, tt = tooltipFn(item);
+    const lbl = item.type === 'text' ? item.content : (item.filename || 'Image'), esc = lbl.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return `<div class="flex items-center gap-3 bg-gray-700/50 p-2 rounded-xl border border-gray-600"><div class="text-xl font-black text-gray-500 w-8 text-center">${i + 1}</div>${item.type === 'image' ? `<img src="${item.content}" class="w-20 h-20 object-contain rounded-lg cursor-pointer hover:ring-2 hover:ring-blue-500 bg-gray-800/50" onclick="showPreview(${item.id})" title="${esc}">` : `<div class="w-20 h-20 flex items-center justify-center bg-gray-600 rounded-lg text-2xl">📝</div>`}<div class="flex-1 min-w-0">${item.type === 'text' ? `<details class="group"><summary class="text-sm font-medium list-none cursor-pointer flex items-center gap-2 mb-1"><span class="truncate flex-1">${item.content}</span><span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-600 group-open:hidden">▼</span></summary><div class="text-sm text-gray-300 bg-gray-900/40 p-3 rounded-lg border border-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto custom-scroll mb-2">${item.content}</div></details>` : `<div class="text-sm font-medium truncate mb-1" title="${esc}">${esc}</div>`}<div class="flex items-center gap-3"><div class="flex-1 h-2 bg-gray-900 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-purple-500" style="width:${n * 100}%"></div></div><div class="score-cell font-mono text-lg ${item.score > 0 ? 'text-green-400' : 'text-yellow-400'}">${item.score > 0 ? '+' : ''}${item.score.toFixed(4)}${tt ? `<div class="score-tooltip">${tt}</div>` : ''}</div></div></div></div>`;
+  }).join('');
+  $(sec).scrollIntoView({ behavior: 'smooth' });
 }
 
 // === Active Learning Selection Implementation ===
@@ -678,7 +869,7 @@ window.calculateOptimalAction = () => {
     return;
   }
 
-  // Calculate target direction (w_user) from all cumulative positive/negative training items
+  // Calculate target direction (w_user) from training items
   let w_user;
   if (chosenItems.length > 0 && notChosenItems.length > 0) {
     const cPos = centroid(chosenItems);
@@ -690,6 +881,7 @@ window.calculateOptimalAction = () => {
     w_user = norm(centroid(notChosenItems).map(x => -x));
   }
 
+  const DIM = w_user.length;
   const allItems = [...state.items.values()];
   const poolItems = allItems.filter(i => i.zone === 'pool' && i.embedding && i.type === 'image');
   const currentPos = allItems.filter(i => i.zone === `pos-${gid}` && i.embedding);
@@ -698,19 +890,18 @@ window.calculateOptimalAction = () => {
   const lenP = currentPos.length;
   const lenN = currentNeg.length;
 
-  const sumPos = new Array(512).fill(0);
+  const sumPos = new Array(DIM).fill(0);
   currentPos.forEach(x => {
-    for (let i = 0; i < 512; i++) sumPos[i] += x.embedding[i];
+    for (let i = 0; i < DIM; i++) sumPos[i] += x.embedding[i];
   });
-  const sumNeg = new Array(512).fill(0);
+  const sumNeg = new Array(DIM).fill(0);
   currentNeg.forEach(x => {
-    for (let i = 0; i < 512; i++) sumNeg[i] += x.embedding[i];
+    for (let i = 0; i < DIM; i++) sumNeg[i] += x.embedding[i];
   });
 
   const cPosBase = lenP > 0 ? sumPos.map(v => v / lenP) : null;
   const cNegBase = lenN > 0 ? sumNeg.map(v => v / lenN) : null;
 
-  // Use uninflated math to allow smaller collections to exert more natural corrective leverage
   function getSimulatedConceptVectorOptimized(item, action) {
     let cPos, cNeg;
     if (action === 'add-pos') {
@@ -731,15 +922,15 @@ window.calculateOptimalAction = () => {
     if (!cNeg) return norm(cPos);
     if (!cPos) return norm(cNeg.map(x => -x));
 
-    const diff = new Array(512);
+    const diff = new Array(DIM);
     let sqSum = 0;
-    for (let i = 0; i < 512; i++) {
+    for (let i = 0; i < DIM; i++) {
       diff[i] = cPos[i] - cNeg[i];
       sqSum += diff[i] * diff[i];
     }
     const m = Math.sqrt(sqSum);
     if (m === 0) return diff;
-    for (let i = 0; i < 512; i++) diff[i] /= m;
+    for (let i = 0; i < DIM; i++) diff[i] /= m;
     return diff;
   }
 
@@ -777,7 +968,6 @@ window.calculateOptimalAction = () => {
 
   if (candidates.length === 0) return;
 
-  // Sort candidates by simulated alignment with user direction
   candidates.sort((a, b) => b.score - a.score);
 
   const seenItemIds = new Set();
